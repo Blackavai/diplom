@@ -1,4 +1,5 @@
 const postgree = require("../db");
+const e = require("express");
 
 const UserModel = {
   getAllUsers: async () => {
@@ -17,6 +18,13 @@ const UserModel = {
       const query = 'DELETE FROM users WHERE id = $1;';
       const value = [id];
       const result = await postgree.query(query, value);
+      return result.rows[0];
+  },
+
+  vacUsers: async (id_user, startHoliday, endHoliday) => {
+      const query = 'INSERT INTO vacation(id_user, start_holiday, end_holiday) VALUES ($1, $2, $3);';
+      const values = [id_user, startHoliday, endHoliday];
+      const result = await postgree.query(query, values);
       return result.rows[0];
   }
 };

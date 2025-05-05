@@ -6,5 +6,6 @@ router.get("/", UserController.getAllUsers);
 router.post("/update/:id", UserController.updateUserInfo);
 router.get("/delete/:id", UserController.deleteUser);
 router.post("/vacation/:id", UserController.vacationUser);
+// router.post("/team/:id", UserController.vacationUser);
 
 module.exports = router;

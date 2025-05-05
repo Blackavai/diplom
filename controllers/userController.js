@@ -36,7 +36,15 @@ const UsersController = {
     },
 
     vacationUser: async (req, res)=> {
-
+        try{
+            const { id } = req.params;
+            const { startHoliday, endHoliday } = req.body;
+            const vacUser = await UsersModel.vacUsers(id, startHoliday, endHoliday);
+            return res.status(201).json({ message: "Отпуск создан", user: vacUser });
+        } catch(err){
+            console.error(err);
+            return res.status(500).json({ message: "Ошибка сервера" });
+        }
     }
 };
 

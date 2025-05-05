@@ -7,7 +7,17 @@ const TaskController = {
             res.json(tasks);
         } catch (err) {
             console.error(err.message);
-            res.status(500).json({ error: "Internal Server Error" });
+            res.status(500).json({ error: "Ошибка сервера" });
+        }
+    },
+    addNewTask: async (req, res) => {
+        try {
+            const { content, id_user, end_date } = req.body;
+            const newTask = await TaskModel.addNewTasks(content, id_user, end_date);
+            res.json({ message: "Задача успешно удалена", task: newTask});
+        } catch (err) {
+            console.error(err.message);
+            res.status(500).json({error: "Ошибка сервера"});
         }
     },
     // getTaskById: async (req, res) => {
@@ -20,34 +30,34 @@ const TaskController = {
     //         res.json(task);
     //     } catch (err) {
     //         console.error(err.message);
-    //         res.status(500).json({ error: "Internal Server Error" });
+    //         res.status(500).json({ error: "Ошибка сервера" });
     //     }
     // },
-    // updateTaskStatus: async (req, res) => {
-    //     const { id } = req.params;
-    //     const { status } = req.body;
-    //     try {
-    //         const updatedTask = await TaskModel.updateTaskStatus(id, status);
-    //         if (!updatedTask) {
-    //             return res.status(404).json({ error: "Task not found" });
-    //         }
-    //         res.json(updatedTask);
-    //     } catch (err) {
-    //         console.error(err.message);
-    //         res.status(500).json({ error: "Internal Server Error" });
-    //     }
-    // },
+    updateTaskContent: async (req, res) => {
+        const { id } = req.params;
+        const updates = req.body;
+        try {
+            const updatedTask = await TaskModel.updateTask(id, updates);
+            res.json(updatedTask);
+        } catch (err) {
+            console.error(err.message);
+            res.status(500).json({ error: "Ошибка сервера" });
+        }
+    },
+
+    deleteTask: async (req, res) => {
+        const { id } = req.params;
+        try {
+            const delTask = await TaskModel.deleteTask(id);
+            if (!delTask) {
+                return res.status(404).json({ error: "Задача не найдена" }); // "Task not found"
+            }
+            res.json({ message: "Задача успешно удалена", task: delTask }); // "Task deleted successfully"
+        } catch (err) {
+            console.error(err.message);
+            res.status(500).json({ error: "Ошибка сервера" }); // "Server error"
+        }
+    }
 };
 
 module.exports = TaskController;
-
-
-// app.get("/tasks", async(req, res) => {
-//     try{
-//         const allTasks = await postgree.query("SELECT * FROM task_list;");
-//         res.json(allTasks.rows);
-//     } catch (err){
-//         console.error(err.message);
-//         res.status(500).json({ error: "Internal Server Error" });
-//     }
-// });
