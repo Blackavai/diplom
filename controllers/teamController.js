@@ -1,10 +1,10 @@
 const teamModel = require("../models/teamModel");
-const reportModel = require("../models/reportModel");
 
 const teamController = {
     getAllTeam: async (req, res) => {
       try{
-
+          const teams = await teamModel.getAllTeams();
+          res.json(teams);
       } catch (err){
           console.error(err);
           return res.status(500).json({ message: "Ошибка сервера" });
@@ -12,7 +12,9 @@ const teamController = {
     },
     createTeam: async (req, res) => {
         try {
-
+            const { nameTeam } = req.body;
+            const newTeam = await teamModel.createTeams(nameTeam);
+            res.json({ message: "Команда успешно удалена", task: newTeam});
         } catch (err) {
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });
@@ -21,8 +23,10 @@ const teamController = {
 
     editTeam: async (req, res) => {
         try {
-            const reports = await reportModel.getAllReports();
-            res.json(reports);
+            const { id } = req.params;
+            const { newNameTeam, descriptionTeam } = req.body;
+            const editTeams = await teamModel.editTeams(id, newNameTeam, descriptionTeam);
+            res.json({message: "Команда успешно изменена", edit: editTeams});
         } catch (err) {
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });
@@ -31,7 +35,10 @@ const teamController = {
 
     addUserTeam: async (req, res) => {
         try {
-
+            const { id } = req.params;
+            const { usersId } = req.body;
+            const addUsersTeam = await teamModel.addUserTeams(id, usersId);
+            res.json({message:"Пользователи добавлены", team: addUsersTeam});
         } catch (err) {
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });
@@ -39,8 +46,10 @@ const teamController = {
     },
 
     delTeam: async (req, res) => {
+        const { id } = req.params;
         try {
-
+            const delTeam = await teamModel.delTeams(id);
+            res.json({ message: "Команда успешно удалена", team: delTeam });
         } catch (err) {
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });
