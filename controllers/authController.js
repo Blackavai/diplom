@@ -1,6 +1,7 @@
 const AuthModel = require("../models/authModel");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const postgree = require("../db");
 
 const AuthController = {
     insertNewUser: async (req, res) => {
@@ -68,6 +69,35 @@ const AuthController = {
         } catch (err) {
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });
+        }
+    },
+
+    recPass: async (req, res) => {
+        try {
+            const { tg_id } = req.body;
+            const recPass = await AuthModel.recPass(tg_id);
+            return res.status(200).json({
+                message: "Для восстановления пароля",
+                recoverPassword: {
+                    questions: recPass.question,
+                    answers: recPass.answer
+                }
+            });
+        } catch (err) {
+            console.error(err);
+            return res.status(404).json({ message: err.message || "Ошибка сервера" }); // Возвращаем 404, если пользователь не найден
+        }
+    },
+
+    newPass: async (req, res) => {
+        try {
+            const { tg_id, textNewPassword } = req.body;
+            const hashedPassword = await bcrypt.hash(textNewPassword, 10);
+            const newPasswords = await AuthModel.newPassword(tg_id, hashedPassword);
+            return res.status(200).json({ message: "Пароль успешно изменён", pass: newPasswords });
+        } catch (err) {
+            console.error(err);
+            return res.status(404).json({ message: err.message || "Ошибка сервера" }); // Возвращаем 404, если пользователь не найден
         }
     }
 };
