@@ -21,17 +21,23 @@ const UserController = require("../controllers/userController");
  *                 properties:
  *                   id:
  *                     type: integer
+ *                     example: "1"
  *                   fname:
  *                     type: string
+ *                     example: "Имя сотрудника"
  *                   lname:
  *                     type: string
+ *                     example: "Фамилия сотрудника"
  *                   tg_id:
  *                     type: string
+ *                     example: "ID телеграмма"
  *                   post:
  *                     type: string
+ *                     example: "Должность"
  *       500:
  *         description: Внутренняя ошибка сервера
  */
+router.get("/", UserController.getAllUsers);
 
 /**
  * @openapi
@@ -84,13 +90,17 @@ const UserController = require("../controllers/userController");
  *                       type: integer
  *                     fname:
  *                       type: string
+ *                       example: "Новое имя"
  *                     lname:
  *                       type: string
+ *                       example: "Новая фамилия"
  *                     post:
  *                       type: string
+ *                       example: "Новая должность"
  *       500:
  *         description: Внутренняя ошибка сервера
  */
+router.post("/update/:id", UserController.updateUserInfo);
 
 /**
  * @openapi
@@ -116,18 +126,10 @@ const UserController = require("../controllers/userController");
  *               properties:
  *                 message:
  *                   type: string
- *                 user:
- *                   type: object
- *                   properties:
- *                     id:
- *                       type: integer
- *                     fname:
- *                       type: string
- *                     lname:
- *                       type: string
  *       500:
  *         description: Внутренняя ошибка сервера
  */
+router.get("/delete/:id", UserController.deleteUser);
 
 /**
  * @openapi
@@ -153,11 +155,11 @@ const UserController = require("../controllers/userController");
  *               startHoliday:
  *                 type: string
  *                 format: date
- *                 example: "2023-12-01"
+ *                 example: "2025-05-10"
  *               endHoliday:
  *                 type: string
  *                 format: date
- *                 example: "2023-12-10"
+ *                 example: "2025-06-01"
  *             required:
  *               - startHoliday
  *               - endHoliday
@@ -179,17 +181,14 @@ const UserController = require("../controllers/userController");
  *                     start_holiday:
  *                       type: string
  *                       format: date
+ *                       example: "2025-05-10"
  *                     end_holiday:
  *                       type: string
  *                       format: date
+ *                       example: "2025-06-01"
  *       500:
  *         description: Внутренняя ошибка сервера
  */
-
-router.get("/", UserController.getAllUsers);
-router.post("/update/:id", UserController.updateUserInfo);
-router.get("/delete/:id", UserController.deleteUser);
 router.post("/vacation/:id", UserController.vacationUser);
-// router.post("/team/:id", UserController.vacationUser);
 
 module.exports = router;

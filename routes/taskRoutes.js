@@ -21,7 +21,7 @@ const TaskController = require("../controllers/taskController");
  *         end_date:
  *           type: string
  *           format: date
- *           example: "2023-12-31"
+ *           example: "2025-05-10"
  *         status:
  *           type: boolean
  *           example: false
@@ -118,14 +118,42 @@ router.post("/new", TaskController.addNewTask);
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Task'
+ *             type: object
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 example: "Новый заголовок задачи"
+ *               end_date:
+ *                 type: string
+ *                 format: date
+ *                 example: "2025-05-10"
+ *               status:
+ *                 type: boolean
+ *                 example: false
  *     responses:
  *       200:
  *         description: Задача обновлена
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Task'
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                   example: 1
+ *                 content:
+ *                   type: string
+ *                   example: "Новый заголовок задачи"
+ *                 id_user:
+ *                   type: integer
+ *                   example: 5
+ *                 end_date:
+ *                   type: string
+ *                   format: date
+ *                   example: "2025-05-10"
+ *                 status:
+ *                   type: boolean
+ *                   example: false
  *       404:
  *         description: Задача не найдена
  *       500:

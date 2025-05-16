@@ -58,6 +58,7 @@ const teamController = require("../controllers/teamController");
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+router.get("/", teamController.getAllTeam);
 
 /**
  * @openapi
@@ -81,15 +82,45 @@ const teamController = require("../controllers/teamController");
  *     responses:
  *       200:
  *         description: Команда успешно создана
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Team'
  *       400:
  *         description: Не указано название команды
  *       500:
  *         description: Внутренняя ошибка сервера
  */
+router.post("/create", teamController.createTeam);
+
+/**
+ * @openapi
+ * /api/teams/delete/{id}:
+ *   delete:
+ *     tags: [Teams]
+ *     summary: Удалить команду
+ *     description: Удаляет команду и всех ее участников
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID команды
+ *     responses:
+ *       200:
+ *         description: Команда успешно удалена
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 team:
+ *                   $ref: '#/components/schemas/Team'
+ *       404:
+ *         description: Команда не найдена
+ *       500:
+ *         description: Внутренняя ошибка сервера
+ */
+router.delete("/delete/:id", teamController.delTeam);
 
 /**
  * @openapi
@@ -132,6 +163,7 @@ const teamController = require("../controllers/teamController");
  *       500:
  *         description: Внутренняя ошибка сервера
  */
+router.put("/edit/:id", teamController.editTeam);
 
 /**
  * @openapi
@@ -176,42 +208,6 @@ const teamController = require("../controllers/teamController");
  *         description: Внутренняя ошибка сервера
  */
 
-/**
- * @openapi
- * /api/teams/delete/{id}:
- *   delete:
- *     tags: [Teams]
- *     summary: Удалить команду
- *     description: Удаляет команду и всех ее участников
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID команды
- *     responses:
- *       200:
- *         description: Команда успешно удалена
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 team:
- *                   $ref: '#/components/schemas/Team'
- *       404:
- *         description: Команда не найдена
- *       500:
- *         description: Внутренняя ошибка сервера
- */
-
-router.get("/", teamController.getAllTeam);
-router.post("/create", teamController.createTeam);
-router.delete("/delete/:id", teamController.delTeam);
-router.put("/edit/:id", teamController.editTeam);
 router.post("/newUserTeam/:id", teamController.addUserTeam);
 
 module.exports = router;

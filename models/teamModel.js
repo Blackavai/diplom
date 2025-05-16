@@ -2,7 +2,7 @@ const postgree = require("../db");
 
 const teamModel = {
     getAllTeams: async () => {
-        const result = await postgree.query("SELECT * FROM teams;");
+        const result = await postgree.query("SELECT * FROM teams_name;");
         return result.rows;
     },
 
