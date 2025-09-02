@@ -66,7 +66,7 @@ router.get("/", teamController.getAllTeam);
  *   post:
  *     tags: [Teams]
  *     summary: Создать новую команду
- *     description: Создает новую команду с указанным названием
+ *     description: Создает новую команду с указанным названием и описанием
  *     requestBody:
  *       required: true
  *       content:
@@ -77,16 +77,21 @@ router.get("/", teamController.getAllTeam);
  *               nameTeam:
  *                 type: string
  *                 example: "Новая команда"
+ *               descriptionTeam:
+ *                 type: string
+ *                 example: "Описание команды"
  *             required:
  *               - nameTeam
+ *               - descriptionTeam
  *     responses:
  *       200:
  *         description: Команда успешно создана
  *       400:
- *         description: Не указано название команды
+ *         description: Не указано название команды или описание команды
  *       500:
  *         description: Внутренняя ошибка сервера
  */
+
 router.post("/create", teamController.createTeam);
 
 /**
@@ -209,5 +214,52 @@ router.put("/edit/:id", teamController.editTeam);
  */
 
 router.post("/newUserTeam/:id", teamController.addUserTeam);
+
+/**
+ * @openapi
+ * /api/teams/view/{id}:
+ *   get:
+ *     tags: [Teams]
+ *     summary: Посмотреть список пользователей в команде
+ *     description: Вывод списка пользователей в команде
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID команды
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               usersId:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *             required:
+ *               - usersId
+ *     responses:
+ *       200:
+ *         description: Пользователи успешно добавлены
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/TeamMember'
+ *       400:
+ *         description: Не указаны ID пользователей
+ *       500:
+ *         description: Внутренняя ошибка сервера
+ */
+
+router.get("/view/:id", teamController.viewTeam);
+
+router.post("/delUserTeam/:id", teamController.delUserTeams);
 
 module.exports = router;

@@ -191,4 +191,10 @@ router.get("/delete/:id", UserController.deleteUser);
  */
 router.post("/vacation/:id", UserController.vacationUser);
 
+router.get("/vacation/view", UserController.allVacationUser);
+
+router.get("/:id/team", UserController.checkTeam);
+router.get("/:id/tasks", UserController.checkCountTasks);
+router.get("/:id/vacation", UserController.checkVacation);
+
 module.exports = router;

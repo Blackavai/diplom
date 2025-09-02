@@ -13,8 +13,19 @@ const teamController = {
     createTeam: async (req, res) => {
         try {
             const { nameTeam } = req.body;
-            const newTeam = await teamModel.createTeams(nameTeam);
+            const newTeam = await teamModel.createTeams(nameTeam, descriptionTeam);
             res.json({ message: "Команда успешно удалена", task: newTeam});
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json({ message: "Ошибка сервера" });
+        }
+    },
+
+    viewTeam: async (req, res) => {
+        try{
+            const { id } = req.params;
+            const viewTeams = await teamModel.viewTeams(id);
+            res.json({message: "Информация о команде", view: viewTeams});
         } catch (err) {
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });
@@ -39,6 +50,17 @@ const teamController = {
             const { usersId } = req.body;
             const addUsersTeam = await teamModel.addUserTeams(id, usersId);
             res.json({message:"Пользователи добавлены", team: addUsersTeam});
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json({ message: "Ошибка сервера" });
+        }
+    },
+
+    delUserTeams: async (req, res) => {
+        const { id } = req.params;
+        try {
+            const delUser = await teamModel.delUserTeam(id);
+            res.json({ message: "Пользователь удалён из команды", team: delUser });
         } catch (err) {
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });

@@ -45,6 +45,50 @@ const UsersController = {
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });
         }
+    },
+
+    allVacationUser: async (req, res)=> {
+        try{
+            const allVacUser = await UsersModel.allVacUsers();
+            return res.status(201).json({ message: "Список всех отпусков", user: allVacUser });
+        } catch(err){
+            console.error(err);
+            return res.status(500).json({ message: "Ошибка сервера" });
+        }
+    },
+
+    checkTeam: async (req, res) => {
+        try{
+            const { id } = req.params;
+            const CheckTeam = await UsersModel.checkTeamUser(id);
+            return res.status(201).json({ user: CheckTeam });
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json({ message: "Ошибка сервера" });
+        }
+
+    },
+
+    checkCountTasks: async (req, res) => {
+        try{
+            const { id } = req.params;
+            const CheckCountTask = await UsersModel.checkCountTaskUser(id);
+            return res.status(201).json({ user: CheckCountTask });
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json({ message: "Ошибка сервера" });
+        }
+    },
+
+    checkVacation: async (req, res) => {
+        try{
+            const { id } = req.params;
+            const CheckVacation = await UsersModel.checkVacationUser(id);
+            return res.status(201).json({ user: CheckVacation });
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json({ message: "Ошибка сервера" });
+        }
     }
 };
 

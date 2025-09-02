@@ -6,11 +6,19 @@ const teamModel = {
         return result.rows;
     },
 
-    createTeams: async (nameTeam) => {
-        const query = `INSERT INTO teams_name(name_team) VALUES ($1);`;
-        const values = [nameTeam];
+    createTeams: async (nameTeam, descriptionTeam) => {
+        const query = `INSERT INTO teams_name(name_team, description_team) VALUES ($1, $2);`;
+        const values = [nameTeam, descriptionTeam];
         const result = await postgree.query(query, values);
         return result.rows[0];
+    },
+
+    viewTeams: async (id) => {
+        const queryView = await postgree.query(`SELECT users.fname, users.lname, users.id
+                                                FROM users
+                                                         INNER JOIN teams ON users.id = teams.id_user
+                                                WHERE teams.id_team_name = $1`, [id]);
+        return queryView.rows;
     },
 
     editTeams: async (id, newNameTeam, descriptionTeam) => {
@@ -29,6 +37,11 @@ const teamModel = {
             results.push(result.rows[0]);
         }
         return results;
+    },
+
+    delUserTeam: async (id) => {
+        const result = await postgree.query("DELETE FROM teams WHERE id_user = $1;", [id]);
+        return result;
     },
 
     delTeams: async (id) => {
