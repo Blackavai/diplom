@@ -3,7 +3,7 @@ const e = require("express");
 
 const UserModel = {
   getAllUsers: async () => {
-      const result = await postgree.query("SELECT id, fname, lname, tg_id, post FROM users;");
+      const result = await postgree.query("SELECT id, fname, lname, tg_id, post FROM users ORDER BY role, lname;");
       return result.rows;
   },
 

@@ -41,8 +41,8 @@ const AuthController = {
 
             // Устанавливаем токен в куки
             res.cookie('token', token, {
-                httpOnly: true, // Защищает куки от доступа через JavaScript
-                secure: process.env.NODE_ENV === 'production', // Используйте secure в продакшене
+                httpOnly: false, // Защищает куки от доступа через JavaScript
+                secure: false, // Используйте secure в продакшене
                 maxAge: 3600000 // Время жизни куки (1 час)
             });
 
@@ -53,8 +53,8 @@ const AuthController = {
                 tg_id: user.tg_id,
                 post: user.post
             }), {
-                httpOnly: true, // Защита от доступа через JavaScript
-                secure: process.env.NODE_ENV === 'production', // Используйте secure в продакшене
+                httpOnly: false, // Защита от доступа через JavaScript
+                secure: false, // Используйте secure в продакшене
                 maxAge: 3600000 // Время жизни куки (1 час)
             });
 
@@ -70,6 +70,15 @@ const AuthController = {
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });
         }
+    },
+    protected: async (req, res) => {
+        const token = req.cookies.token;
+        if (!token) return res.status(401).json({ message: 'Нет токена' });
+
+        jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+            if (err) return res.status(403).json({ message: 'Неверный токен' });
+            res.json({ message: 'Доступ разрешен', user: decoded });
+        });
     },
 
     recPass: async (req, res) => {

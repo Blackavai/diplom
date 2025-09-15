@@ -10,14 +10,23 @@ const teamController = {
           return res.status(500).json({ message: "Ошибка сервера" });
       }
     },
+
     createTeam: async (req, res) => {
         try {
-            const { nameTeam } = req.body;
-            const newTeam = await teamModel.createTeams(nameTeam, descriptionTeam);
-            res.json({ message: "Команда успешно удалена", task: newTeam});
+            const { nameTeam, descriptionTeam } = req.body; // Получаем данные из запроса
+            const newTeam = await teamModel.createTeams(nameTeam, descriptionTeam); // Создаем команду
+
+            console.log("Новая команда:", newTeam); // Логируем созданную команду
+
+            if (!newTeam || !newTeam.id) {
+                return res.status(400).json({ message: "Не удалось создать команду" }); // Проверяем, что команда создана
+            }
+
+            // Возвращаем id новой команды в ответе
+            res.json({ message: "Команда успешно создана", task: { id: newTeam.id } });
         } catch (err) {
-            console.error(err);
-            return res.status(500).json({ message: "Ошибка сервера" });
+            console.error(err); // Логируем ошибку
+            return res.status(500).json({ message: "Ошибка сервера" }); // Возвращаем ошибку сервера
         }
     },
 
@@ -57,9 +66,9 @@ const teamController = {
     },
 
     delUserTeams: async (req, res) => {
-        const { id } = req.params;
+        const { id_team, id_user } = req.params;
         try {
-            const delUser = await teamModel.delUserTeam(id);
+            const delUser = await teamModel.delUserTeam(id_team, id_user);
             res.json({ message: "Пользователь удалён из команды", team: delUser });
         } catch (err) {
             console.error(err);

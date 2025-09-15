@@ -2,22 +2,22 @@ const postgree = require("../db");
 
 const teamModel = {
     getAllTeams: async () => {
-        const result = await postgree.query("SELECT * FROM teams_name;");
+        const result = await postgree.query("SELECT * FROM teams_name ORDER BY id;");
         return result.rows;
     },
 
     createTeams: async (nameTeam, descriptionTeam) => {
-        const query = `INSERT INTO teams_name(name_team, description_team) VALUES ($1, $2);`;
+        const query = `INSERT INTO teams_name(name_team, description_team) VALUES ($1, $2) RETURNING id;`;
         const values = [nameTeam, descriptionTeam];
         const result = await postgree.query(query, values);
-        return result.rows[0];
+        return result.rows[0]; // Теперь result.rows[0] будет содержать id
     },
 
     viewTeams: async (id) => {
         const queryView = await postgree.query(`SELECT users.fname, users.lname, users.id
                                                 FROM users
                                                          INNER JOIN teams ON users.id = teams.id_user
-                                                WHERE teams.id_team_name = $1`, [id]);
+                                                WHERE teams.id_team_name = $1 ORDER BY teams.id`, [id]);
         return queryView.rows;
     },
 
@@ -39,8 +39,8 @@ const teamModel = {
         return results;
     },
 
-    delUserTeam: async (id) => {
-        const result = await postgree.query("DELETE FROM teams WHERE id_user = $1;", [id]);
+    delUserTeam: async (id_team, id_user) => {
+        const result = await postgree.query("DELETE FROM teams WHERE id_team_name = $1 AND id_user = $2;", [id_team, id_user]);
         return result;
     },
 

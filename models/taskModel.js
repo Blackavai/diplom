@@ -9,9 +9,9 @@ const TaskModel = {
         // const result = await postgree.query("SELECT * FROM task_list WHERE id = $1;", [id]);
         // return result.rows[0];
     },
-    addNewTasks: async (content, id_user, end_date) => {
-        const query = 'INSERT INTO task_list(content, id_user, end_date, status) VALUES ($1, $2, $3, false);';
-        const values = [content, id_user, end_date];
+    addNewTasks: async (content, id_user, end_date, start_date) => {
+        const query = 'INSERT INTO task_list(content, id_user, end_date, status, start_date) VALUES ($1, $2, $3, false, $4);';
+        const values = [content, id_user, end_date, start_date];
         const result = await postgree.query(query, values);
         return result.rows[0];
     },

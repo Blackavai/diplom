@@ -260,6 +260,6 @@ router.post("/newUserTeam/:id", teamController.addUserTeam);
 
 router.get("/view/:id", teamController.viewTeam);
 
-router.post("/delUserTeam/:id", teamController.delUserTeams);
+router.post("/delUserTeam/:id_team/:id_user", teamController.delUserTeams);
 
 module.exports = router;
