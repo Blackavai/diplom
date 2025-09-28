@@ -6,17 +6,25 @@ const postgree = require("../db");
 const AuthController = {
     insertNewUser: async (req, res) => {
         try {
-            const { fname, lname, tg_id, post, password } = req.body;
-
+            const { fname, lname, tg_id, post, role } = req.body;
             const existingUser = await AuthModel.findUserByTGid(tg_id);
             if (existingUser) {
                 return res.status(400).json({ message: "Пользователь с таким id уже существует." });
             }
-
-            const hashedPassword = await bcrypt.hash(password, 10);
-            const newUser = await AuthModel.createUser(fname, lname, tg_id, post, hashedPassword);
-
+            // const hashedPassword = await bcrypt.hash(password, 10);
+            const newUser = await AuthModel.createUser(fname, lname, tg_id, post, role);
             return res.status(201).json({ message: "Пользователь успешно зарегистрирован", user: newUser });
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json({ message: "Ошибка сервера" });
+        }
+    },
+
+    deleteUser: async (req, res) => {
+        const { id } = req.params;
+        try {
+            const delUser = await AuthModel.delUser(id);
+            return res.status(201).json({ message: "Пользователь успешно удалён" });
         } catch (err) {
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });
@@ -32,7 +40,8 @@ const AuthController = {
                 return res.status(400).json({ message: "Пользователь не найден." });
             }
 
-            const isMatch = await bcrypt.compare(password, user.password);
+            // const isMatch = await bcrypt.compare(password, user.password);
+            const isMatch = password === user.password;
             if (!isMatch) {
                 return res.status(400).json({ message: "Неверный пароль." });
             }
@@ -88,22 +97,41 @@ const AuthController = {
             return res.status(200).json({
                 message: "Для восстановления пароля",
                 recoverPassword: {
-                    questions: recPass.question,
-                    answers: recPass.answer
+                    questions: recPass.question
                 }
             });
         } catch (err) {
-            console.error(err);
             return res.status(404).json({ message: err.message || "Ошибка сервера" }); // Возвращаем 404, если пользователь не найден
+        }
+    },
+
+    recAns: async (req, res) => {
+        try {
+            const { tg_id, secAns } = req.body;
+            const recPass = await AuthModel.recAns(tg_id, secAns);
+
+            if (recPass) {
+                return res.status(200).json({
+                    message: "Ответ верный. Переходите к восстановлению пароля.",
+                    recoverPassword: {
+                        questions: recPass.question,
+                        answers: recPass.answer
+                    }
+                });
+            } else {
+                return res.status(403).json({ message: "Неверный ответ на вопрос" });
+            }
+        } catch (err) {
+            return res.status(500).json({ message: err.message || "Ошибка сервера" });
         }
     },
 
     newPass: async (req, res) => {
         try {
             const { tg_id, textNewPassword } = req.body;
-            const hashedPassword = await bcrypt.hash(textNewPassword, 10);
-            const newPasswords = await AuthModel.newPassword(tg_id, hashedPassword);
-            return res.status(200).json({ message: "Пароль успешно изменён", pass: newPasswords });
+            // const hashedPassword = await bcrypt.hash(textNewPassword, 10);
+            const newPasswords = await AuthModel.newPassword(tg_id, textNewPassword);
+            return res.status(200).json({ message: "Пароль успешно изменён", success: true });
         } catch (err) {
             console.error(err);
             return res.status(404).json({ message: err.message || "Ошибка сервера" }); // Возвращаем 404, если пользователь не найден

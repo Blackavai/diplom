@@ -8,7 +8,14 @@
       <jdbc-url>jdbc:postgresql://localhost:5432/OggettoDailyDB</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
-    <data-source source="LOCAL" name="OggettoDailyDB@80.72.20.99" uuid="01c6c4dd-c3e8-4257-826d-f754ebefedce">
+    <data-source source="LOCAL" name="telegram-db@localhost" uuid="5b83fb49-9046-4268-8a66-cdc8d661eb7d">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://localhost:5432/telegram-db</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="OggettoDailyDB@80.72.20.99" uuid="ac6e70c0-e455-458d-8b40-450540ca390d">
       <driver-ref>postgresql</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>

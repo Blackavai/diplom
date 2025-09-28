@@ -16,9 +16,9 @@ const TaskController = {
             const checkVacation = await TaskModel.checkVacationUser(id_user);
             if(!checkVacation) {
                 const newTask = await TaskModel.addNewTasks(content, id_user, end_date, start_date);
-                res.json({message: "Задача успешно удалена", task: newTask});
+                res.json({message: "Задача успешно добавлена", task: newTask, checkVacation: false});
             } else {
-                res.json({message: "Сотрудник в отпуске"});
+                res.json({message: "Сотрудник в отпуске", checkVacation: true});
             }
         } catch (err) {
             console.error(err.message);

@@ -143,10 +143,12 @@ const AuthController = require("../controllers/authController");
 */
 
 
-// router.post("/", AuthController.insertNewUser);
+router.post("/createUser", AuthController.insertNewUser);
+router.delete("/delUser/:id", AuthController.deleteUser);
 router.post("/login", AuthController.loginUser);
 router.get("/protected", AuthController.protected);
-router.get("/recPass", AuthController.recPass);
-router.get("/recPass/newPass", AuthController.newPass);
+router.post("/recPass", AuthController.recPass);
+router.post("/recAns", AuthController.recAns);
+router.post("/recPass/newPass", AuthController.newPass);
 
 module.exports = router;
