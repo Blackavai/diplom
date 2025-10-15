@@ -6,13 +6,13 @@ const postgree = require("../db");
 const AuthController = {
     insertNewUser: async (req, res) => {
         try {
-            const { fname, lname, tg_id, post, role } = req.body;
+            const { fname, lname, tg_id, post, role, pass } = req.body;
             const existingUser = await AuthModel.findUserByTGid(tg_id);
             if (existingUser) {
                 return res.status(400).json({ message: "Пользователь с таким id уже существует." });
             }
             // const hashedPassword = await bcrypt.hash(password, 10);
-            const newUser = await AuthModel.createUser(fname, lname, tg_id, post, role);
+            const newUser = await AuthModel.createUser(fname, lname, tg_id, post, role, pass);
             return res.status(201).json({ message: "Пользователь успешно зарегистрирован", user: newUser });
         } catch (err) {
             console.error(err);
@@ -38,6 +38,10 @@ const AuthController = {
 
             if (!user) {
                 return res.status(400).json({ message: "Пользователь не найден." });
+            }
+
+            if(user.role != 1){
+                return res.status(400).json({ message: "Пользователь не является менеджером" });
             }
 
             // const isMatch = await bcrypt.compare(password, user.password);
@@ -67,7 +71,7 @@ const AuthController = {
                 maxAge: 3600000 // Время жизни куки (1 час)
             });
 
-            return res.status(200).json({ message: "Успешный вход",
+            return res.status(200).json({ message: "Вы вошли в систему",
                 user: {
                     fname: user.fname,
                     lname: user.lname,
