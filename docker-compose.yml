@@ -21,7 +21,7 @@ services:
 
   app:
     build:
-      context: ./test_node
+      context: ./backend
       dockerfile: Dockerfile
     container_name: node_app
     restart: always
@@ -46,7 +46,7 @@ services:
 
   frontend:
     build:
-      context: ./test_vite_ts
+      context: ./frontend
       dockerfile: Dockerfile
     container_name: vite_frontend
     restart: always
