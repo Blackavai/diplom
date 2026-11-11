@@ -1,0 +1,221 @@
+/*.mainBlockUser {
+    width: 1300px;
+    min-height: 200px;
+    margin-left: auto;
+    margin-right: auto;
+    border-radius: 25px;
+    background-color: #D9D9D9;
+    padding: 30px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.cardUser {
+    width: 300px;
+    height: 400px;
+    background-color: white;
+    border-radius: 10px;
+    box-sizing: border-box;
+    margin: 10px;
+}*/
+
+.mainBlockUser{
+    width: 95%;
+    min-height: 500px;
+    margin-left: auto;
+    margin-right: auto;
+    border-radius: 25px;
+    background-color: #D9D9D9;
+    padding: 30px;
+    margin-top: 20px;
+    max-width: 1900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.titleUser{
+    display: grid;
+    grid-template-columns: 3fr 1fr 0.1fr 0.5fr;
+    grid-template-areas:
+        "logo blank searchTeam addButton";
+    border-bottom: 1px solid white;
+    padding: 20px;
+    p{
+        font-size: 32px;
+        /*font-weight: bold;*/
+    }
+}
+
+.formSearch{
+    display: flex;
+    flex-direction: row;
+}
+
+.searchUser{
+    flex-grow: 2;
+    grid-area: searchTeam;
+    align-self: center;
+    justify-self: center;
+    width: 250px;
+    border-radius: 15px 0 0 15px;
+    height: 50px;
+    padding: 10px;
+    background-color: white;
+}
+
+.searchUser:focus{
+    outline: none;
+}
+
+.buttonSearch{
+    grid-area: searchTeam;
+    align-self: center;
+    justify-self: center;
+    width: 75px;
+    height: 50px;
+    border-radius: 0 15px 15px 0;
+    background-size: 50%;
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    background-image: url('../assets/search.png');
+    background-color: white;
+
+}
+
+.columnUser{
+    font-size: 24px;
+    margin-top: 20px;
+}
+
+.rowUser{
+    margin-bottom: 20px;
+    /*border: 1px solid black;*/
+    /*background-color: white;*/
+    /*border-radius: 10px;*/
+    /*box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);*/
+    padding: 30px;
+    padding-left: 20px;
+    padding-right: 20px;
+    display: grid;
+    grid-template-columns: 3fr 3fr 0.3fr;
+    background-color: white;
+    box-shadow: 1px 5px 1px 1px rgba(0, 0, 0, 0.05);
+    border-radius: 25px;
+    align-items: center;
+    /*align-items: center;*/
+    /*justify-content: space-between;*/
+    p{
+        /*text-align: right;*/
+
+    }
+
+}
+
+.divUser1{
+}
+.divUser2{
+    text-align: center;
+}
+.divUser3{
+
+}
+
+.hrTitle{
+    border-bottom: 1px solid black;
+}
+.nameUser{
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.descriptionUser{
+    font-size: 1.2rem;
+}
+
+.addUser{
+    grid-area: addButton;
+    align-self: center;
+    justify-self: center;
+    width: 100px;
+    height: 50px;
+    border-radius: 15px;
+    background-size: 30%;
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    background-image: url('../assets/addUser.png');
+    background-color: white;
+    -webkit-transition: background-color 0.3s,
+    background-image 0.2s;
+}
+
+.addUser:hover{
+    background-color: #ffdd00;
+    background-image: url('../assets/addUserHover.png');
+
+}
+
+.pencilAnim{
+    cursor: pointer;
+    transition: 0.3s;
+}
+.pencilAnim:hover{
+    transform: scale(1.1);
+}
+
+.addUser{
+    grid-area: addButton;
+    align-self: center;
+    justify-self: center;
+    width: 100px;
+    height: 50px;
+    border-radius: 15px;
+    background-size: 25%;
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+    background-image: url('../assets/addUser.png');
+    background-color: white;
+    -webkit-transition: background-color 0.3s,
+    background-image 0.2s;
+    transition: 0.3s;
+}
+.addUser:active{
+    transform: scale(0.9);
+}
+
+.addUser:hover{
+    background-color: #ffdd00;
+    background-image: url('../assets/addUserHover.png');
+}
+
+@media (max-width: 768px) {
+    .titleUser{
+        display: flex;
+        flex-direction: column;
+    }
+
+    .rowUser{
+        font-size: calc(14px + 8 * (100vw - 320px) / 880);
+    }
+
+    .nameUser{
+        font-size: calc(14px + 8 * (100vw - 320px) / 880);
+    }
+
+    .formSearch{
+        margin-top: 10px;
+        margin-bottom: 10px;
+    }
+
+    .titleUser{
+        p{
+            font-size: calc(20px + 8 * (100vw - 320px) / 880);
+        }
+    }
+    .searchUser{
+        width: 100%;
+    }
+}

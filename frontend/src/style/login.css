@@ -1,0 +1,106 @@
+.mainBlockLogin{
+    display: flex;
+    /*justify-content: space-between;*/
+    /*margin-right: 50px;*/
+    /*margin-left: 50px;*/
+    max-width: 1900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.fixedSizeImage {
+    width: 400px;
+    height: auto;
+}
+.loginMainBlock{
+    /*background-color: #D9D9D9;*/
+    background-color: rgba(217, 217, 217, 0.75);
+    width:700px;
+    height: 500px;
+    box-shadow: 0px 1px 25px 25px rgba(255, 237, 0, 1);
+    border-radius: 40px;
+    margin: 50px;
+    margin-left: auto;
+    margin-right: auto;
+    border: 2px solid black;
+    /*padding: 20px;*/
+}
+
+.logoLogin{
+    border-bottom: 2px solid black;
+    margin-bottom: 50px;
+    img{
+        padding-top: 20px;
+        padding-left: 10px;
+    }
+}
+
+.inputLogin{
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    p{
+        font-size: 18px;
+    }
+    input{
+        width: 50%;
+        border: 2px solid black;
+        border-radius: 30px;
+        height: 60px;
+        font-size: 1.5vw;
+        padding-left: 20px;
+        transition: 0.3s;
+        margin-bottom: 15px;
+    }
+    input:focus{
+        border: 2px solid #ffdd00;
+        outline: none;
+    }
+
+    button {
+        border-radius: 100px;
+        background-color: #FBF537;
+        width: 35%;
+        height: 60px;
+        font-size: 1.5vw;
+        transition: 0.5s;
+        font-weight: bold;
+    }
+
+    button:hover{
+        background-color: #ffdd00;
+    }
+}
+
+@media (max-width: 1024px){
+    .fixedSizeImage{
+        display: none;
+    }
+    .mainBlockLogin{
+        justify-content: center;
+    }
+    .inputLogin {
+
+        input {
+            font-size: clamp(1rem, 0.9rem + 0.5vw, 1.25rem);
+            height: 60px;
+            width: 80%;
+        }
+
+        button{
+            font-size: clamp(1rem, 0.9rem + 0.5vw, 1.25rem);
+            width: 50%;
+            height: 50px;
+
+        }
+
+        p{
+            font-size: calc(14px + 8 * (100vw - 320px) / 880);
+        }
+    }
+    .loginMainBlock{
+        margin-left: 50px;
+        margin-right: 50px;
+    }
+}
