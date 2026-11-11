@@ -103,4 +103,6 @@ router.get("/", reportController.getAllReport);
 
 router.put("/accept/:id", reportController.acceptReport);
 
+router.post("/new", reportController.newReport);
+
 module.exports = router;

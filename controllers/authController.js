@@ -40,9 +40,9 @@ const AuthController = {
                 return res.status(400).json({ message: "Пользователь не найден." });
             }
 
-            if(user.role != 1){
-                return res.status(400).json({ message: "Пользователь не является менеджером" });
-            }
+            // if(user.role != 1){
+            //     return res.status(400).json({ message: "Пользователь не является менеджером" });
+            // }
 
             // const isMatch = await bcrypt.compare(password, user.password);
             const isMatch = password === user.password;
@@ -61,10 +61,12 @@ const AuthController = {
 
             // Сохраняем данные пользователя в куки
             res.cookie('userData', JSON.stringify({
+                id: user.id,
                 fname: user.fname,
                 lname: user.lname,
                 tg_id: user.tg_id,
-                post: user.post
+                post: user.post,
+                role: user.role
             }), {
                 httpOnly: false, // Защита от доступа через JavaScript
                 secure: false, // Используйте secure в продакшене
@@ -73,10 +75,12 @@ const AuthController = {
 
             return res.status(200).json({ message: "Вы вошли в систему",
                 user: {
+                    id: user.id,
                     fname: user.fname,
                     lname: user.lname,
                     tg_id: user.tg_id,
                     post: user.post,
+                    role: user.role,
                     token: token
                 } });
         } catch (err) {
