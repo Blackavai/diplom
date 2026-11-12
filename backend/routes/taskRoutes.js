@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const TaskController = require("../controllers/taskController");
+const { authenticate, requireManager } = require('../middleware/authMiddleware');
+router.use(authenticate, requireManager);
 
 /**
  * @openapi

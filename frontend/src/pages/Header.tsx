@@ -2,11 +2,10 @@ import React, { useState } from 'react';
 import '../style/header.css';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from './AuthContext.tsx';
-import Cookies from 'js-cookie';
 import { useNotification } from './Notification.tsx';
 
 function Header() {
-    const { user, setUser, setToken } = useAuth();
+    const { user, logout } = useAuth();
     const { addNotification } = useNotification();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -14,11 +13,7 @@ function Header() {
     const isAdmin = user?.role === 1;
 
     const handleLogout = () => {
-        setUser("");
-        setToken(null);
-        Cookies.remove('userData');
-        Cookies.remove('token');
-        Cookies.remove('tokenExpiration');
+        logout();
         addNotification('success', 'Вы вышли из системы');
         setIsSidebarOpen(false);
     };

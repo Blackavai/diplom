@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select"
 
 import React, {useEffect, useState} from "react";
-import axios from "axios";
+import api, { apiErrorMessage } from '@/lib/api';
 
 import { useNotification } from './Notification.tsx';
 import imgReportNone from "@/assets/reports_none.png";
@@ -32,8 +32,8 @@ export function DialogReport({ userReport, setRefresh }) {
     const { addNotification } = useNotification();
 
     const readReport = (userReportId) => {
-        axios
-            .put(`http://localhost:5001/api/reports/accept/${userReportId}`)
+        api
+            .put(`/reports/accept/${userReportId}`)
             .then((response) => {
                 // console.log("Успешный запрос", response.data);
                 setOpen(false);
@@ -41,7 +41,7 @@ export function DialogReport({ userReport, setRefresh }) {
                 addNotification('success', 'Отчёт принят');
             })
             .catch((error) => {
-                console.error("Ошибка запроса", error);
+                console.error("Ошибка запроса", apiErrorMessage(error));
                 addNotification('error', 'Ошибка при принятии отчёта');
             });
     }
@@ -108,13 +108,13 @@ function ReportsList() {
     const [refresh, setRefresh] = useState(false);
 
     useEffect(() => {
-        axios
-            .get("http://localhost:5001/api/reports")
+        api
+            .get("/reports")
             .then((response) => {
                 setUserReport(response.data);
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
             });
     }, [refresh]);
 

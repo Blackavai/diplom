@@ -1,4 +1,6 @@
 const reportModel = require("../models/reportModel");
+const { positiveId } = require('../middleware/authMiddleware');
+const { isNonEmptyString } = require('../utils/passwordRecovery');
 
 const reportController = {
     getAllReport: async (req, res) => {
@@ -21,19 +23,21 @@ const reportController = {
         }
     },
     newReport: async (req, res) => {
-    try {
-        const { id_task, id_user, text_report, end_date } = req.body;
-
-        // Log the received data
-        console.log('Received report data:', req.body);
-
-        const reports = await reportModel.newReports(id_task, id_user, text_report, end_date);
-        res.json({ message: "Отчёт успешно отправлен" });
-    } catch (err) {
-        console.error("Server error:", err);
-        return res.status(500).json({ message: "Ошибка сервера" });
+        const { id_task, text_report, end_date } = req.body || {};
+        const taskId = positiveId(id_task);
+        if (taskId === null || !isNonEmptyString(text_report) || !isNonEmptyString(end_date, 40) || !Number.isFinite(Date.parse(end_date))) {
+            return res.status(400).json({ message: 'Некорректные данные отчёта' });
+        }
+        try {
+            // The author always comes from the verified session, never body.id_user.
+            const report = await reportModel.newReports(taskId, req.user.id, text_report, end_date);
+            if (!report) return res.status(404).json({ message: 'Задача не найдена или недоступна' });
+            return res.json({ message: "Отчёт успешно отправлен" });
+        } catch {
+            console.error('Ошибка отправки отчёта');
+            return res.status(500).json({ message: "Ошибка сервера" });
+        }
     }
-}
 };
 
 module.exports = reportController;

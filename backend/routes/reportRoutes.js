@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const reportController = require("../controllers/reportController");
+const { authenticate, requireManager } = require('../middleware/authMiddleware');
+router.use(authenticate);
 
 /**
  * @openapi
@@ -63,7 +65,7 @@ const reportController = require("../controllers/reportController");
  *               $ref: '#/components/schemas/Error'
  */
 
-router.get("/", reportController.getAllReport);
+router.get("/", requireManager, reportController.getAllReport);
 
 /**
  * @openapi
@@ -101,8 +103,47 @@ router.get("/", reportController.getAllReport);
  *               $ref: '#/components/schemas/Error'
  */
 
-router.put("/accept/:id", reportController.acceptReport);
+router.put("/accept/:id", requireManager, reportController.acceptReport);
 
+/**
+ * @openapi
+ * /api/reports/new:
+ *   post:
+ *     tags: [Reports]
+ *     summary: Отправить отчёт по своей задаче
+ *     description: Доступно обеим ролям. Автор определяется по Bearer JWT; body.id_user игнорируется. Проверка исполнителя, вставка отчёта и завершение задачи атомарны. Несколько отчётов по задаче пока допускаются.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [id_task, text_report, end_date]
+ *             properties:
+ *               id_task:
+ *                 type: integer
+ *                 minimum: 1
+ *               text_report:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 255
+ *               end_date:
+ *                 type: string
+ *                 description: Дата или ISO timestamp, как в текущем frontend
+ *     responses:
+ *       200:
+ *         description: Отчёт и завершение задачи сохранены
+ *       400:
+ *         description: Некорректные данные
+ *       401:
+ *         description: Требуется авторизация
+ *       403:
+ *         description: Роль не разрешена
+ *       404:
+ *         description: Задача не найдена или принадлежит другому пользователю
+ *       500:
+ *         description: Ошибка сервера; транзакция откатывается
+ */
 router.post("/new", reportController.newReport);
 
 module.exports = router;

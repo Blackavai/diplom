@@ -21,11 +21,13 @@ const App = () => {
             <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route element={<AuthRedirect />}>
-                    <Route path="/users" element={<User />} />
-                    <Route path="/teams" element={<Teams />} />
-                    <Route path="/tasks_list" element={<TasksList />} />
-                    <Route path="/reports_list" element={<ReportsList />} />
-                    <Route path="/vacation_list" element={<VacationList />} />
+                    <Route element={<AuthRedirect roles={[1]} />}>
+                        <Route path="/users" element={<User />} />
+                        <Route path="/teams" element={<Teams />} />
+                        <Route path="/tasks_list" element={<TasksList />} />
+                        <Route path="/reports_list" element={<ReportsList />} />
+                        <Route path="/vacation_list" element={<VacationList />} />
+                    </Route>
                     <Route path="/tasks" element={<TasksEmploye />} />
                 </Route>
                 <Route path="*" element={

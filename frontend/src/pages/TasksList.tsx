@@ -13,7 +13,7 @@ import {Label} from "@/components/ui/label.tsx";
 import delTeamUserButt from "@/assets/delTeamUser.png";
 import {Button} from "@/components/ui/button.tsx";
 import React, {useEffect, useState} from "react";
-import axios from "axios";
+import api, { apiErrorMessage } from '@/lib/api';
 import {Calendar28} from "@/pages/VacationList.tsx";
 import { useNotification } from './Notification.tsx';
 import imgUsersNone from "@/assets/users_none.png";
@@ -40,7 +40,7 @@ export function DialogTask({ user, tasks, updateTasks }) {
                 start_date: todayDay
             };
 
-            axios.post('http://localhost:5001/api/tasks/new', newTask)
+            api.post('/tasks/new', newTask)
                 .then(response => {
                     if (response.data.checkVacation) {
                         addNotification('error', response.data.message);
@@ -54,7 +54,7 @@ export function DialogTask({ user, tasks, updateTasks }) {
                     }
                 })
                 .catch(error => {
-                    console.error("Ошибка добавления задачи:", error);
+                    console.error("Ошибка добавления задачи:", apiErrorMessage(error));
                     addNotification('error', 'Ошибка добавления задачи');
                 });
         } else {
@@ -121,19 +121,19 @@ function TasksList() {
     const [vacationStatus, setVacationStatus] = useState({}); // Local state for vacation status
 
     useEffect(() => {
-        axios
-            .get("http://localhost:5001/api/users")
+        api
+            .get("/users")
             .then((response) => {
                 setData(response.data);
                 const tasksPromises = response.data.map(user =>
-                    axios.get(`http://localhost:5001/api/users/${user.id}/tasks`)
+                    api.get(`/users/${user.id}/tasks`)
                         .then((taskResponse) => {
                             return { id: user.id, tasks: taskResponse.data.user };
                         })
                 );
 
                 const vacationPromises = response.data.map(user =>
-                    axios.get(`http://localhost:5001/api/users/${user.id}/vacation`)
+                    api.get(`/users/${user.id}/vacation`)
                         .then((vacationResponse) => {
                             return { id: user.id, isOnVacation: vacationResponse.data.user };
                         })
@@ -154,11 +154,11 @@ function TasksList() {
                         setVacationStatus(vacationMap); // Assuming you have a state for vacation status
                     })
                     .catch((error) => {
-                        console.log(error);
+                        console.log(apiErrorMessage(error));
                     });
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
             });
     }, []);
 

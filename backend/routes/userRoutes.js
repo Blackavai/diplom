@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const UserController = require("../controllers/userController");
+const { authenticate, requireManager, requireSelfOrManager } = require('../middleware/authMiddleware');
+router.use(authenticate);
 
 /**
  * @openapi
@@ -37,7 +39,7 @@ const UserController = require("../controllers/userController");
  *       500:
  *         description: Внутренняя ошибка сервера
  */
-router.get("/", UserController.getAllUsers);
+router.get("/", requireManager, UserController.getAllUsers);
 
 /**
  * @openapi
@@ -100,7 +102,7 @@ router.get("/", UserController.getAllUsers);
  *       500:
  *         description: Внутренняя ошибка сервера
  */
-router.post("/update/:id", UserController.updateUserInfo);
+router.post("/update/:id", requireManager, UserController.updateUserInfo);
 
 /**
  * @openapi
@@ -129,7 +131,7 @@ router.post("/update/:id", UserController.updateUserInfo);
  *       500:
  *         description: Внутренняя ошибка сервера
  */
-router.get("/delete/:id", UserController.deleteUser);
+router.get("/delete/:id", requireManager, UserController.deleteUser);
 
 /**
  * @openapi
@@ -189,12 +191,12 @@ router.get("/delete/:id", UserController.deleteUser);
  *       500:
  *         description: Внутренняя ошибка сервера
  */
-router.post("/vacation/:id", UserController.vacationUser);
+router.post("/vacation/:id", requireManager, UserController.vacationUser);
 
-router.get("/vacation/view", UserController.allVacationUser);
+router.get("/vacation/view", requireManager, UserController.allVacationUser);
 
-router.get("/:id/team", UserController.checkTeam);
-router.get("/:id/tasks", UserController.checkCountTasks);
-router.get("/:id/vacation", UserController.checkVacation);
+router.get("/:id/team", requireSelfOrManager, UserController.checkTeam);
+router.get("/:id/tasks", requireSelfOrManager, UserController.checkCountTasks);
+router.get("/:id/vacation", requireSelfOrManager, UserController.checkVacation);
 
 module.exports = router;

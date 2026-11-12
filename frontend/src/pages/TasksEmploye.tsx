@@ -12,10 +12,10 @@ import arrow from "@/assets/right-arrow-upd.png";
 import {Label} from "@/components/ui/label.tsx";
 import {Button} from "@/components/ui/button.tsx";
 import React, {useEffect, useState} from "react";
-import axios from "axios";
+import api, { apiErrorMessage } from '@/lib/api';
 import {Calendar28} from "@/pages/VacationList.tsx";
 import { useNotification } from './Notification.tsx';
-import Cookies from 'js-cookie';
+import { useAuth } from './AuthContext.tsx';
 
 export function DialogTask({ task, updateTasks }) {
      const [reportContent, setReportContent] = useState("");
@@ -33,17 +33,16 @@ export function DialogTask({ task, updateTasks }) {
 
         const reportData = {
             id_task: task.id,
-            id_user: task.id_user,
             text_report: reportContent,
             end_date: new Date().toISOString() 
         };
 
         try {
-            await axios.post('http://localhost:5001/api/reports/new', reportData);
+            await api.post('/reports/new', reportData);
             addNotification('success', 'Отчет успешно отправлен');
             setReportContent("");
         } catch (error) {
-            console.error("Ошибка отправки отчета:", error);
+            console.error("Ошибка отправки отчета:", apiErrorMessage(error));
             addNotification('error', 'Ошибка при отправке отчета');
         }
     };
@@ -85,17 +84,17 @@ export function DialogTask({ task, updateTasks }) {
 
 function TasksEmploye() {
     const [tasksData, setTasksData] = useState([]);
-    const userData = Cookies.get('userData'); 
-    const userId = userData ? JSON.parse(userData).id : null;
+    const { user } = useAuth();
+    const userId = user?.id;
 
     useEffect(() => {
         if (userId) {
-            axios.get(`http://localhost:5001/api/users/${userId}/tasks`)
+            api.get(`/users/${userId}/tasks`)
                 .then(response => {
                     setTasksData(response.data.user);
                 })
                 .catch(error => {
-                    console.error("Ошибка получения задач:", error);
+                    console.error("Ошибка получения задач:", apiErrorMessage(error));
                 });
         }
     }, [userId]);

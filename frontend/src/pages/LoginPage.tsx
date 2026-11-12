@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
 import axios from 'axios';
+import { publicApi } from '@/lib/api';
 import { useAuth } from './AuthContext.tsx';
 import '../style/login.css';
-import Cookies from 'js-cookie';
 import { useNavigate } from 'react-router-dom';
 import { useNotification } from './Notification.tsx';
 
@@ -14,7 +14,7 @@ const errorMessage = (error: unknown, fallback: string) => {
 };
 
 const LoginPage: React.FC = () => {
-    const { setUser, setToken } = useAuth();
+    const { setToken } = useAuth();
     const [tg_id, setTgId] = useState('');
     const [password, setPassword] = useState('');
     const [isRecoveryMode, setIsRecoveryMode] = useState(false);
@@ -34,17 +34,14 @@ const LoginPage: React.FC = () => {
 
     const authFunc = async () => {
         try {
-            const response = await axios.post('http://localhost:5001/api/auth/login', { tg_id, password }, { withCredentials: true });
+            const response = await publicApi.post('/auth/login', { tg_id, password }, { withCredentials: true });
             const token = response.data.user.token;
 
             if (!token) {
                 throw new Error("Токен не получен");
             }
 
-            setUser(response.data.user);
             setToken(token);
-            Cookies.set('token', token);
-            Cookies.set('userData', JSON.stringify(response.data.user));
             addNotification('success', 'Вы вошли в систему');
             if(response.data.user.role == 1) {
                 navigate('/users');
@@ -86,7 +83,7 @@ const LoginPage: React.FC = () => {
             return;
         }
         try {
-            const response = await axios.post('http://localhost:5001/api/auth/recPass', { tg_id: recoveryTgId }, { timeout: 15000 });
+            const response = await publicApi.post('/auth/recPass', { tg_id: recoveryTgId }, { timeout: 15000 });
             const question = response.data?.recoverPassword?.questions;
             if (typeof question !== 'string' || !question.trim()) throw new Error('Вопрос не получен');
             setSecurityQuestion(question);
@@ -103,7 +100,7 @@ const LoginPage: React.FC = () => {
             return;
         }
         try {
-            const response = await axios.post('http://localhost:5001/api/auth/recAns', { tg_id: recoveryTgId, secAns: securityAnswer }, { timeout: 15000 });
+            const response = await publicApi.post('/auth/recAns', { tg_id: recoveryTgId, secAns: securityAnswer }, { timeout: 15000 });
             const token = response.data?.recoveryToken;
             if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) throw new Error('Разрешение не получено');
             setRecoveryToken(token);
@@ -127,7 +124,7 @@ const LoginPage: React.FC = () => {
         }
 
         try {
-            const response = await axios.post('http://localhost:5001/api/auth/recPass/newPass', {
+            const response = await publicApi.post('/auth/recPass/newPass', {
                 tg_id: recoveryTgId, textNewPassword: newPassword, recoveryToken
             }, { timeout: 15000 });
             if (response.data.success) {

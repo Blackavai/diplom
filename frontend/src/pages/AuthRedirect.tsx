@@ -1,39 +1,23 @@
-import React, { useEffect } from 'react';
+import { Link, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './AuthContext.tsx';
-import { useNavigate } from 'react-router-dom';
-import Cookies from 'js-cookie';
-import { Outlet } from 'react-router-dom';
-
-interface AuthRedirectProps {
-    children: React.ReactNode;
-}
-
-const AuthRedirect: React.FC<AuthRedirectProps> = ({ children }) => {
-    const { token, setUser, setToken } = useAuth();
-    const navigate = useNavigate();
-
-    useEffect(() => {
-        // Проверка наличия токена при первом рендере
-        if (!token) {
-            setUser(null);
-            setToken(null);
-            navigate('/login');
-        }
-
-        // Таймер для проверки токена каждые 60 секунд
-        const interval = setInterval(() => {
-            const currentToken = Cookies.get('token');
-            if (!currentToken) {
-                setUser("");
-                setToken(null);
-                navigate('/login');
-            }
-        }, 3600000); // Проверка каждые 60 секунд
-
-        return () => clearInterval(interval); // Очистка интервала при размонтировании компонента
-    }, [token, navigate, setUser, setToken]);
-
-    return <>{children || <Outlet />}</>;
+const AuthRedirect = ({ roles }: { roles?: number[] }) => {
+    const { user, status, logout, retrySession } = useAuth();
+    if (status === 'anonymous') return <Navigate to="/login" replace />;
+    if (status === 'checking') return <p role="status">Проверка сессии…</p>;
+    if (status === 'error' || status === 'forbidden') return (
+        <div role="alert">
+            <p>{status === 'forbidden' ? 'Доступ запрещён' : 'Не удалось проверить сессию. Проверьте соединение.'}</p>
+            <button className="btnInteractive" onClick={retrySession}>Повторить</button>
+            <button className="btnInteractive" onClick={logout}>Выйти</button>
+        </div>
+    );
+    if (!user || (roles && !roles.includes(user.role))) return (
+        <div role="alert">
+            <p>Недостаточно прав для этой страницы</p>
+            <Link to={user?.role === 1 ? '/users' : '/tasks'}>Перейти к доступной странице</Link>
+        </div>
+    );
+    return <Outlet />;
 };
 
 export default AuthRedirect;

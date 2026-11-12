@@ -7,7 +7,7 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog.tsx";
 import pencil from "@/assets/editUser.png";
-import axios from 'axios';
+import api, { apiErrorMessage } from '@/lib/api';
 import React, { useEffect, useState } from "react";
 import {Button} from "@/components/ui/button.tsx";
 import {Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select.tsx";
@@ -21,35 +21,35 @@ export function DialogDemo({ user, onDelete }) {
     const [CheckTask, setCheckTask] = useState([]);
 
     useEffect(() => {
-        axios
-            .get(`http://localhost:5001/api/users/${user.id}/team`)
+        api
+            .get(`/users/${user.id}/team`)
             .then((response) => {
                 setCheckTeam(response.data);
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
             });
     }, [user.id]);
 
     useEffect(() => {
-        axios
-            .get(`http://localhost:5001/api/users/${user.id}/vacation`)
+        api
+            .get(`/users/${user.id}/vacation`)
             .then((response) => {
                 setCheckVac(response.data.user);
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
             });
     }, [user.id]);
 
     useEffect(() => {
-        axios
-            .get(`http://localhost:5001/api/users/${user.id}/tasks`)
+        api
+            .get(`/users/${user.id}/tasks`)
             .then((response) => {
                 setCheckTask(response.data.user);
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
             });
     }, [user.id]);
 
@@ -114,7 +114,7 @@ export function DialogAddUser() {
 
     const addUserData = async () => {
         try {
-            const response = await axios.post(`http://localhost:5001/api/auth/createUser`, {
+            const response = await api.post(`/auth/createUser`, {
                 fname,
                 lname,
                 tg_id,
@@ -133,7 +133,7 @@ export function DialogAddUser() {
             setRoleText("");
             setRoleValue(null);
         } catch (error) {
-            console.error("Ошибка при сохранении данных пользователя:", error);
+            console.error("Ошибка при сохранении данных пользователя:", apiErrorMessage(error));
             addNotification('error', 'Ошибка при сохранении данных пользователя');
         }
     };
@@ -250,19 +250,19 @@ function User() {
     const {addNotification} = useNotification();
 
     useEffect(() => {
-        axios
-            .get("http://localhost:5001/api/users")
+        api
+            .get("/users")
             .then((response) => {
                 setData(response.data);
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
             });
     }, []);
 
     const deleteUser = async (userId) => {
         try {
-            await axios.delete(`http://localhost:5001/api/auth/delUser/${userId}`);
+            await api.delete(`/auth/delUser/${userId}`);
             // Update the user list after deletion
             setData((prevData) => prevData.filter(user => user.id !== userId));
             addNotification('success', 'Сотрудник удалён из системы');

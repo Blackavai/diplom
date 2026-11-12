@@ -2,6 +2,10 @@ const postgree = require('../db');
 const { isNonEmptyString, answersMatch } = require('../utils/passwordRecovery');
 
 const AuthModel = {
+    findUserById: async (id) => {
+        const result = await postgree.query('SELECT id, fname, lname, tg_id, post, role FROM users WHERE id = $1', [id]);
+        return result.rows[0] || null;
+    },
     createUser: async (fname, lname, tg_id, post, role, pass) => {
         const query = 'INSERT INTO users (fname, lname, tg_id, role, post, password) VALUES ($1, $2, $3, $4, $5, $6)';
         const values = [fname, lname, tg_id, role, post, pass];

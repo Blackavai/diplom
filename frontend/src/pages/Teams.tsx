@@ -12,7 +12,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import axios from 'axios';
+import api, { apiErrorMessage } from '@/lib/api';
 import React, { useEffect, useState } from "react";
 import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover.tsx";
 import {CheckIcon} from "lucide-react";
@@ -25,13 +25,13 @@ export function SelectUser({ selectedUsers, setSelectedUsers }) {
     const [open, setOpen] = useState(false);
 
     useEffect(() => {
-        axios
-            .get("http://localhost:5001/api/users")
+        api
+            .get("/users")
             .then((response) => {
                 setUsers(response.data);
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
             });
     }, []);
 
@@ -95,39 +95,39 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
     const { addNotification } = useNotification();
 
     useEffect(() => {
-        axios
-            .get(`http://localhost:5001/api/teams/view/${team.id}`)
+        api
+            .get(`/teams/view/${team.id}`)
             .then((response) => {
                 // console.log(response);
                 setDataTeam(response.data.view);
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
             });
     }, [team.id]);
 
     const deleteUserTeam = (id_user) => {
-        axios
-            .post(`http://localhost:5001/api/teams/delUserTeam/${team.id}/${id_user}`)
+        api
+            .post(`/teams/delUserTeam/${team.id}/${id_user}`)
             .then((response) => {
                 // console.log("Участник удален:", response.data);
                 setDataTeam((prevData) => prevData.filter(member => member.id !== id_user));
                 addNotification('success', 'Участник удалён из команды');
             })
             .catch((error) => {
-                console.error("Ошибка при удалении участника:", error);
+                console.error("Ошибка при удалении участника:", apiErrorMessage(error));
                 addNotification('error', 'Ошибка при удалении участника');
             });
     };
 
     const saveTeamData = async (id_team) => {
         try {
-            const response = await axios.put(`http://localhost:5001/api/teams/edit/${id_team}`, {
+            const response = await api.put(`/teams/edit/${id_team}`, {
                 newNameTeam: teamName,
                 descriptionTeam: teamDescription,
             });
 
-            const userResponse = await axios.post(`http://localhost:5001/api/teams/newUserTeam/${id_team}`, {
+            const userResponse = await api.post(`/teams/newUserTeam/${id_team}`, {
                 usersId: selectNewUser.map(user => user.id),
             });
 
@@ -138,7 +138,7 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
             updateTeamData({ id: id_team, name_team: teamName, description_team: teamDescription });
             refreshTeams();
         } catch (error) {
-            console.error("Ошибка при сохранении данных команды:", error);
+            console.error("Ошибка при сохранении данных команды:", apiErrorMessage(error));
             addNotification('error', 'Ошибка при сохранении данных команды');
         }
     };
@@ -222,15 +222,15 @@ export function DialogAddTeam({ refreshTeams }) {
     };
 
     const addTeamData = () => {
-        axios
-            .post(`http://localhost:5001/api/teams/create`, {
+        api
+            .post(`/teams/create`, {
                 nameTeam: teamName,
                 descriptionTeam: teamDescription,
             })
             .then((response) => {
                 const id_team = response.data.task.id;
                 addNotification('success', 'Команда создана');
-                return axios.post(`http://localhost:5001/api/teams/newUserTeam/${id_team}`, {
+                return api.post(`/teams/newUserTeam/${id_team}`, {
                     usersId: newUserTeam.map(user => user.id),
                 });
             })
@@ -241,7 +241,7 @@ export function DialogAddTeam({ refreshTeams }) {
                 addNotification('success', 'Пользователи добавлены в команду');
             })
             .catch((error) => {
-                console.error("Ошибка при сохранении данных команды:", error);
+                console.error("Ошибка при сохранении данных команды:", apiErrorMessage(error));
                 addNotification('error', 'Ошибка при сохранении данных команды');
             });
     };
@@ -316,26 +316,26 @@ function Teams() {
     }, []);
 
     const fetchTeams = () => {
-        axios
-            .get("http://localhost:5001/api/teams/")
+        api
+            .get("/teams/")
             .then((response) => {
                 setData(response.data);
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
             });
     };
 
     const deleteTeam = (id_team) => {
-        axios
-            .delete(`http://localhost:5001/api/teams/delete/${id_team}`)
+        api
+            .delete(`/teams/delete/${id_team}`)
             .then((response) => {
                 // console.log("Команда удалена:", response.data);
                 setData((prevData) => prevData.filter(team => team.id !== id_team));
                 addNotification('success', 'Команда успешно удалена');
             })
             .catch((error) => {
-                console.error("Ошибка при удалении команды:", error);
+                console.error("Ошибка при удалении команды:", apiErrorMessage(error));
                 addNotification('error', 'Ошибка при удалении команды');
             });
     };

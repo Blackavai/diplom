@@ -48,7 +48,10 @@ const AuthController = {
 
     loginUser: async (req, res) => {
         try {
-            const { tg_id, password } = req.body;
+            const { tg_id, password } = req.body || {};
+            if (!isNonEmptyString(tg_id) || typeof password !== 'string' || !password.trim()) {
+                return res.status(400).json({ message: 'Введите логин и пароль' });
+            }
             const user = await AuthModel.findUserByTGid(tg_id);
 
             if (!user) {
@@ -104,13 +107,8 @@ const AuthController = {
         }
     },
     protected: async (req, res) => {
-        const token = req.cookies.token;
-        if (!token) return res.status(401).json({ message: 'Нет токена' });
-
-        jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-            if (err) return res.status(403).json({ message: 'Неверный токен' });
-            res.json({ message: 'Доступ разрешен', user: decoded });
-        });
+        const { id, fname, lname, tg_id, post, role } = req.user;
+        return res.json({ message: 'Доступ разрешен', user: { id, fname, lname, tg_id, post, role } });
     },
 
     recPass: async (req, res) => {

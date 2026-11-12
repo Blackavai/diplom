@@ -8,7 +8,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog"
-import axios from 'axios';
+import api, { apiErrorMessage } from '@/lib/api';
 import React, { useEffect, useState } from "react";
 import { CalendarIcon } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
@@ -123,13 +123,13 @@ export function SelectUser({ setUserId }) {
     const [value, setValue] = useState("");
 
     useEffect(() => {
-        axios
-            .get("http://localhost:5001/api/users")
+        api
+            .get("/users")
             .then((response) => {
                 setUsers(response.data);
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
             });
     }, []);
 
@@ -206,8 +206,8 @@ export function DialogAddVacation({ setRefresh }) {
             endHoliday,
         };
 
-        axios
-            .post(`http://localhost:5001/api/users/vacation/${userId}`, vacationData)
+        api
+            .post(`/users/vacation/${userId}`, vacationData)
             .then((response) => {
                 // console.log("Отпуск добавлен:", response.data);
                 setUserId("");
@@ -218,7 +218,7 @@ export function DialogAddVacation({ setRefresh }) {
                 setRefresh(prev => !prev);
             })
             .catch((error) => {
-                console.error("Ошибка при создании отпуска:", error);
+                console.error("Ошибка при создании отпуска:", apiErrorMessage(error));
                 addNotification('error', 'Ошибка при создании отпуска');
             });
     };
@@ -262,14 +262,14 @@ function VacationList() {
     const [refresh, setRefresh] = useState(false); // Состояние для обновления списка
 
     useEffect(() => {
-        axios
-            .get("http://localhost:5001/api/users/vacation/view")
+        api
+            .get("/users/vacation/view")
             .then((response) => {
                 // console.log(response.data); // Логируем данные
                 setUsers(response.data.user); // Извлекаем массив пользователей
             })
             .catch((error) => {
-                console.log(error);
+                console.log(apiErrorMessage(error));
                 setUsers([]); // Устанавливаем пустой массив в случае ошибки
             });
     }, [refresh]); // Добавьте refresh в зависимости

@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const teamController = require("../controllers/teamController");
+const { authenticate, requireManager } = require('../middleware/authMiddleware');
+router.use(authenticate, requireManager);
 
 /**
  * @openapi

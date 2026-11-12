@@ -32,11 +32,15 @@ test('recovery and safe user DTO over HTTP with synthetic PostgreSQL', {
     t.after(() => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
     await once(server, 'listening');
     const baseURL = `http://127.0.0.1:${server.address().port}`;
+    const manager = await pool.query(`INSERT INTO users (fname,lname,tg_id,role,post)
+        VALUES ('Test','Manager','recovery-test-manager',1,'Test') RETURNING id`);
+    const managerToken = require('jsonwebtoken').sign({ id: manager.rows[0].id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
     async function post(path, body, headers = {}) {
         const response = await fetch(baseURL + path, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...headers },
+            headers: { 'Content-Type': 'application/json',
+                ...(path.startsWith('/api/users/') ? { Authorization: `Bearer ${managerToken}` } : {}), ...headers },
             body: JSON.stringify(body)
         });
         const text = await response.text();
