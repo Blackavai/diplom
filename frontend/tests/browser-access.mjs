@@ -31,6 +31,17 @@ let holdCreate = false;
 let pendingLogins = [];
 let pendingCreates = [];
 let expectedPassword;
+let teamsEnabled = false;
+let holdTeam = false;
+let failTeam = false;
+let failMembers = false;
+const pendingTeams = [];
+let syntheticTeams = [];
+const teamMembers = new Map();
+const syntheticUsers = [
+    { id: 3, fname: 'Member', lname: 'One', post: 'Test' },
+    { id: 4, fname: 'Member', lname: 'Two', post: 'Test' },
+];
 const actor = () => ({ id: mode === 'manager' || mode === 'management403' ? 1 : 2,
     role: mode === 'manager' || mode === 'management403' ? 1 : 2,
     fname: 'Synthetic', lname: 'Test', tg_id: 'synthetic-test', post: 'Test' });
@@ -48,7 +59,7 @@ async function intercept(event) {
     if (event.request.method === 'OPTIONS') return respond(event, 204, null);
     const body = event.request.postData ? JSON.parse(event.request.postData) : {};
     const password = body.password ?? body.pass ?? body.textNewPassword;
-    records.push({ path, hasBearer: /^Bearer /.test(event.request.headers.Authorization || event.request.headers.authorization || ''),
+    records.push({ path, method: event.request.method, usersId: body.usersId, hasBearer: /^Bearer /.test(event.request.headers.Authorization || event.request.headers.authorization || ''),
         passwordChars: typeof password === 'string' ? password.length : undefined });
     if (expectedPassword !== undefined && password !== undefined) assert.equal(password, expectedPassword);
     if (path === '/api/auth/protected') {
@@ -70,6 +81,24 @@ async function intercept(event) {
     if (path === '/api/auth/recPass/newPass') return respond(event, 200, { success: true });
     if (mode === 'task401' && path.endsWith('/tasks')) return respond(event, 401, { message: 'Недействительная сессия' });
     if (mode === 'management403' && path === '/api/users') return respond(event, 403, { message: 'Доступ запрещён' });
+    if (teamsEnabled) {
+        if (path === '/api/users') return respond(event, 200, syntheticUsers);
+        if (path === '/api/teams/') return respond(event, 200, syntheticTeams);
+        if (path === '/api/teams/create' || path.startsWith('/api/teams/edit/')) {
+            if (holdTeam) await new Promise((release) => pendingTeams.push(release));
+            if (failTeam) return respond(event, 500, { message: 'Synthetic team failure' });
+            const id = path.endsWith('/create') ? 10 + syntheticTeams.length : Number(path.split('/').at(-1));
+            const team = { id, name_team: body.nameTeam ?? body.newNameTeam, description_team: body.descriptionTeam };
+            syntheticTeams = [...syntheticTeams.filter((item) => item.id !== id), team];
+            const members = [...(teamMembers.get(id) || []), ...syntheticUsers.filter((user) => body.usersId.includes(user.id))];
+            teamMembers.set(id, [...new Map(members.map((member) => [member.id, member])).values()]);
+            return respond(event, 200, path.endsWith('/create') ? { task: { id } } : { edit: team });
+        }
+        if (path.startsWith('/api/teams/view/')) {
+            if (failMembers) return respond(event, 500, { message: 'Synthetic loading failure' });
+            return respond(event, 200, { view: teamMembers.get(Number(path.split('/').at(-1))) || [] });
+        }
+    }
     if (path === '/api/users') return respond(event, 200, []);
     if (path.endsWith('/tasks')) return respond(event, 201, { user: [] });
     return respond(event, 404, { message: 'Synthetic test route not found' });
@@ -119,7 +148,7 @@ try {
     await call('Runtime.enable');
     await call('Network.enable');
     await call('Network.setBlockedURLs', { urls: ['https://*'] });
-    await call('Fetch.enable', { patterns: [{ urlPattern: 'http://localhost:5001/*', requestStage: 'Request' }] });
+    await call('Fetch.enable', { patterns: [{ urlPattern: `${origin}/api/*`, requestStage: 'Request' }] });
 
     await clearCookies();
     await navigate('/tasks');
@@ -256,6 +285,97 @@ try {
     await until(() => hasText('Добавить пользователя'));
     assert.equal(records.filter((entry) => entry.path === '/api/auth/createUser').at(-1).passwordChars, expectedPassword.length);
     pass('manager form keeps the long password and blocks concurrent creation requests');
+    expectedPassword = undefined;
+    teamsEnabled = true;
+    await navigate('/teams');
+    await until(() => evaluate("Boolean(document.querySelector('button.addTeam'))"));
+    await evaluate("document.querySelector('button.addTeam').click()");
+    await until(() => hasText('Создание команды'));
+    await fill('Название', 'Browser team');
+    await fill('Введите описание', 'Synthetic description');
+    const chooseMember = async (name) => {
+        await clickButton('Добавить');
+        await until(() => evaluate(`Array.from(document.querySelectorAll('[cmdk-item]')).some(item => item.textContent.includes(${JSON.stringify(name)}))`));
+        await evaluate(`Array.from(document.querySelectorAll('[cmdk-item]')).find(item => item.textContent.includes(${JSON.stringify(name)})).click()`);
+        await evaluate("document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+        await until(() => evaluate("!document.querySelector('[cmdk-item]')"));
+    };
+    await chooseMember('Member One');
+    holdTeam = true;
+    const beforeCreation = records.filter((record) => record.path === '/api/teams/create').length;
+    await evaluate("{ const button=Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Сохранить'); button.click(); button.click(); }");
+    await until(async () => pendingTeams.length === 1);
+    assert.equal(records.filter((record) => record.path === '/api/teams/create').length, beforeCreation + 1);
+    assert.deepEqual(records.filter((record) => record.path === '/api/teams/create').at(-1).usersId, [3]);
+    assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Сохранение…').disabled"), true);
+    holdTeam = false;
+    pendingTeams.splice(0).forEach((release) => release());
+    await until(() => evaluate("!document.querySelector('[role=dialog]') && document.body.innerText.includes('Browser team')"));
+    assert.equal(records.some((record) => record.path.startsWith('/api/teams/newUserTeam/')), false);
+    pass('team and members are created in one request; double submit is blocked');
+
+    const openTeam = async () => {
+        await evaluate("document.querySelector('img.adaptArrow').click()");
+        await until(() => hasText('Меню команды'));
+        await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
+    };
+    const closeDialog = async () => {
+        await evaluate("document.querySelector('[role=dialog]').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+        await until(() => evaluate("!document.querySelector('[role=dialog]')"));
+    };
+    await openTeam();
+    await clickButton('Добавить');
+    await until(() => evaluate("Boolean(document.querySelector('[cmdk-item]'))"));
+    assert.equal(await evaluate("Array.from(document.querySelectorAll('[cmdk-item]')).some(item=>item.textContent.includes('Member One'))"), false);
+    await evaluate("document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await until(() => evaluate("!document.querySelector('[cmdk-item]')"));
+    await chooseMember('Member Two');
+    holdTeam = true;
+    await evaluate("{const button=Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Сохранить');button.click();button.click();}");
+    await until(async () => pendingTeams.length === 1);
+    holdTeam = false;
+    pendingTeams.splice(0).forEach((release) => release());
+    await until(() => evaluate("document.querySelectorAll('[role=dialog] ol li').length === 2 && Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
+    const edits = () => records.filter((record) => record.path === '/api/teams/edit/10');
+    assert.equal(edits().length, 1);
+    assert.deepEqual(edits()[0].usersId, [4]);
+    await clickButton('Сохранить');
+    await until(async () => edits().length === 2);
+    assert.deepEqual(edits()[1].usersId, []);
+    await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
+    pass('existing members are excluded, saved members refresh and selection resets');
+
+    await closeDialog();
+    teamMembers.set(10, [syntheticUsers[0]]);
+    await openTeam();
+    assert.equal(await evaluate("document.querySelectorAll('[role=dialog] ol li').length"), 1);
+    await closeDialog();
+    pass('reopening the team reloads its current membership');
+
+    failMembers = true;
+    await evaluate("document.querySelector('img.adaptArrow').click()");
+    await until(() => hasText('Не удалось загрузить состав команды'));
+    assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Сохранить').disabled"), true);
+    failMembers = false;
+    await clickButton('Повторить');
+    await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
+    await closeDialog();
+    pass('membership load error blocks saving and supports retry');
+
+    await evaluate("document.querySelector('button.addTeam').click()");
+    await until(() => hasText('Создание команды'));
+    assert.equal(await evaluate("document.querySelector('input[placeholder=Название]').value"), '');
+    assert.equal(await evaluate("document.querySelectorAll('[role=dialog] ol li').length"), 0);
+    await fill('Название', 'Failed team');
+    failTeam = true;
+    await clickButton('Сохранить');
+    await until(() => hasText('Ошибка при сохранении данных команды'));
+    await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
+    assert.equal(await evaluate("document.querySelector('input[placeholder=Название]').value"), 'Failed team');
+    assert.equal(syntheticTeams.length, 1);
+    failTeam = false;
+    await closeDialog();
+    pass('successful creation clears the form; failed creation keeps the draft and shows an error');
     assert.deepEqual(interceptionErrors, []);
     assert.deepEqual(exceptions, []);
     console.log(`Browser scenarios passed: ${passed}; API responses are synthetic, no working backend contacted`);

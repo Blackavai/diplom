@@ -1,59 +1,94 @@
-const postgree = require("../db");
+const postgree = require('../db');
+
+async function transaction(operation) {
+    const client = await postgree.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await operation(client);
+        await client.query('COMMIT');
+        return result;
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+// Every membership writer in this application locks the parent team first.
+// This serializes duplicate checks without changing existing data or the schema.
+async function addMembers(client, id, usersId) {
+    const ids = [...new Set(usersId)].sort((a, b) => a - b);
+    if (!ids.length) return [];
+    const users = await client.query(
+        'SELECT id FROM users WHERE id = ANY($1::int[]) ORDER BY id FOR KEY SHARE', [ids]
+    );
+    if (users.rowCount !== ids.length) {
+        const error = new Error('Один или несколько пользователей не найдены');
+        error.status = 400;
+        throw error;
+    }
+    const result = await client.query(`
+        INSERT INTO teams (id_team_name, id_user)
+        SELECT $1, member_id FROM unnest($2::int[]) AS member_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM teams WHERE id_team_name = $1 AND id_user = member_id
+        ) RETURNING *`, [id, ids]);
+    return result.rows;
+}
+
+const lockTeam = async (client, id) =>
+    (await client.query('SELECT id FROM teams_name WHERE id = $1 FOR UPDATE', [id])).rowCount > 0;
 
 const teamModel = {
     getAllTeams: async () => {
-        const result = await postgree.query("SELECT * FROM teams_name ORDER BY id;");
+        const result = await postgree.query('SELECT * FROM teams_name ORDER BY id;');
         return result.rows;
     },
 
-    createTeams: async (nameTeam, descriptionTeam) => {
-        const query = `INSERT INTO teams_name(name_team, description_team) VALUES ($1, $2) RETURNING id;`;
-        const values = [nameTeam, descriptionTeam];
-        const result = await postgree.query(query, values);
-        return result.rows[0]; // Теперь result.rows[0] будет содержать id
-    },
+    createTeams: (nameTeam, descriptionTeam, usersId = []) => transaction(async (client) => {
+        const result = await client.query(
+            'INSERT INTO teams_name(name_team, description_team) VALUES ($1, $2) RETURNING id',
+            [nameTeam, descriptionTeam]
+        );
+        await addMembers(client, result.rows[0].id, usersId);
+        return result.rows[0];
+    }),
 
     viewTeams: async (id) => {
-        const queryView = await postgree.query(`SELECT users.fname, users.lname, users.id
-                                                FROM users
-                                                         INNER JOIN teams ON users.id = teams.id_user
-                                                WHERE teams.id_team_name = $1 ORDER BY teams.id`, [id]);
-        return queryView.rows;
+        const result = await postgree.query(`SELECT users.fname, users.lname, users.id
+            FROM users INNER JOIN teams ON users.id = teams.id_user
+            WHERE teams.id_team_name = $1 ORDER BY teams.id`, [id]);
+        return result.rows;
     },
 
-    editTeams: async (id, newNameTeam, descriptionTeam) => {
-        const query = `UPDATE teams_name SET name_team = $1, description_team = $2 WHERE id = $3 RETURNING *;`;
-        const values = [newNameTeam, descriptionTeam, id];
-        const result = await postgree.query(query, values);
+    editTeams: (id, newNameTeam, descriptionTeam, usersId = []) => transaction(async (client) => {
+        if (!await lockTeam(client, id)) return null;
+        const result = await client.query(
+            'UPDATE teams_name SET name_team = $1, description_team = $2 WHERE id = $3 RETURNING *',
+            [newNameTeam, descriptionTeam, id]
+        );
+        await addMembers(client, id, usersId);
         return result.rows[0];
-    },
+    }),
 
-    addUserTeams: async (id, usersId) => {
-        const results = [];
-        for (const id_user of usersId) {
-            const query = `INSERT INTO teams (id_team_name, id_user) VALUES ($1, $2) RETURNING *`; // Используем RETURNING для получения добавленных записей
-            const values = [id, id_user];
-            const result = await postgree.query(query, values);
-            results.push(result.rows[0]);
-        }
-        return results;
-    },
+    addUserTeams: (id, usersId) => transaction(async (client) => {
+        if (!await lockTeam(client, id)) return null;
+        return addMembers(client, id, usersId);
+    }),
 
-    delUserTeam: async (id_team, id_user) => {
-        const result = await postgree.query("DELETE FROM teams WHERE id_team_name = $1 AND id_user = $2;", [id_team, id_user]);
-        return result;
-    },
+    delUserTeam: (id_team, id_user) => transaction(async (client) => {
+        if (!await lockTeam(client, id_team)) return null;
+        return client.query('DELETE FROM teams WHERE id_team_name = $1 AND id_user = $2', [id_team, id_user]);
+    }),
 
-    delTeams: async (id) => {
-        const result = await postgree.query("DELETE FROM teams_name WHERE id = $1;", [id]);
-        if(result)
-        {
-            const result_user_team = await postgree.query("DELETE FROM teams WHERE id_team_name = $1;", [id]);
-            return result_user_team;
-        } else {
-            return result;
-        }
-    }
+    delTeams: (id) => transaction(async (client) => {
+        if (!await lockTeam(client, id)) return null;
+        const members = await client.query('DELETE FROM teams WHERE id_team_name = $1', [id]);
+        await client.query('DELETE FROM teams_name WHERE id = $1', [id]);
+        // Preserve the existing response's QueryResult shape.
+        return members;
+    })
 };
 
 module.exports = teamModel;

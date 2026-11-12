@@ -50,7 +50,8 @@ test('protected requests send the current Bearer token to the existing API', asy
     api.defaults.adapter = success;
     const response = await api.get('/users');
     assert.equal(response.config.headers.get('Authorization'), 'Bearer synthetic-one');
-    assert.equal(response.config.baseURL, 'http://localhost:5001/api');
+    assert.equal(response.config.baseURL, '/api');
+    assert.equal(publicApi.defaults.baseURL, '/api');
     globalThis.__accessCookies.token = 'synthetic-two';
     assert.equal((await api.get('/users')).config.headers.get('Authorization'), 'Bearer synthetic-two');
 });

@@ -1,5 +1,6 @@
 # Standalone test configuration. Do not merge with docker-compose.yml.
-# No .env references, published ports, existing volumes, or real data dump.
+# No .env references, existing volumes, or real data dump.
+# The optional proxy profile publishes random loopback-only test ports.
 name: itrum-recovery-test
 services:
   recovery-db:
@@ -41,3 +42,43 @@ services:
       dockerfile: Dockerfile
       target: frontend-builder
     command: ["npm", "run", "lint"]
+
+  # Optional end-to-end profile; only disposable test services and loopback ports.
+  proxy-app:
+    profiles: [proxy]
+    build: ./backend
+    environment:
+      NODE_ENV: test
+      RECOVERY_TEST_DATABASE: "1"
+      DB_HOST: recovery-db
+      DB_PORT: "5432"
+      DB_NAME: dailysync_recovery_test
+      DB_USER: recovery_test
+      DB_PASSWORD: synthetic-test-only
+      JWT_SECRET: synthetic-proxy-test-only
+      PORT: "5097"
+    command: ["npm", "start"]
+    ports: ["127.0.0.1::5097"]
+    depends_on:
+      recovery-db:
+        condition: service_healthy
+
+  proxy-nginx:
+    profiles: [proxy]
+    build: ./frontend
+    environment:
+      API_UPSTREAM: http://proxy-app:5097
+    ports: ["127.0.0.1::80"]
+    depends_on: [proxy-app]
+
+  proxy-vite:
+    profiles: [proxy]
+    build:
+      context: ./frontend
+      target: frontend-builder
+    environment:
+      API_PROXY_TARGET: http://proxy-app:5097
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: proxy-vite
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    ports: ["127.0.0.1::5173"]
+    depends_on: [proxy-app]

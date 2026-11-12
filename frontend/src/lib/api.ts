@@ -2,8 +2,8 @@ import axios from 'axios';
 import Cookies from 'js-cookie';
 import { toast } from 'sonner';
 
-// Existing API address, shared by the current pages. Proxy/deployment changes are separate.
-const baseURL = 'http://localhost:5001/api';
+// Vite and Nginx proxy this path to the backend in their respective environments.
+const baseURL = '/api';
 const api = axios.create({ baseURL });
 export const publicApi = axios.create({ baseURL });
 const unauthorizedHandlers = new Set<() => void>();

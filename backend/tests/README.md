@@ -1,4 +1,4 @@
-# Проверки первых трёх этапов: доступ, восстановление, отчёты и пароли
+# Проверки согласованных этапов: доступ, восстановление, отчёты, пароли и команды
 
 Все команды Docker ниже выполняются из корня проекта. Используется **отдельный**
 `docker-compose.recovery-test.yml`, без объединения с production Compose.
@@ -12,8 +12,8 @@ node --test backend/tests/passwords.test.js backend/tests/loginAttempts.test.js
 ```
 
 `npm test` из `backend` запускает файлы последовательно, ограничивая суммарную
-нагрузку scrypt в тестах. Без `RECOVERY_TEST_DATABASE=1` четыре интеграционных
-сценария будут пропущены; это не полный результат проверки HTTP/БД.
+нагрузку scrypt в тестах. Без `RECOVERY_TEST_DATABASE=1` пять интеграционных
+сценариев будут пропущены; это не полный результат проверки HTTP/БД.
 
 ## HTTP и PostgreSQL
 
@@ -23,7 +23,7 @@ docker compose --env-file /dev/null -f docker-compose.recovery-test.yml -p itrum
 ```
 
 Перед запуском убедитесь, что выбранное имя проекта не занято другим тестовым
-запуском. В этой конфигурации нет публикации портов, `env_file`, ссылок на
+запуском. В базовом запуске этой конфигурации нет публикации портов, `env_file`, ссылок на
 существующий `pgdata` или настоящий SQL-дамп. PostgreSQL 17 хранит данные в
 `tmpfs`; начальная схема содержит `role`, `users`, команды, задачи, отчёты,
 отпуска и синтетические роли.
@@ -71,3 +71,41 @@ docker compose --env-file /dev/null -f docker-compose.recovery-test.yml -p itrum
 ошибки общего lint/typecheck не должны скрывать результат остальных проверок.
 Результаты согласованного этапа записаны в `docs/AUDIT.md`.
 Браузерные проверки описаны в `frontend/tests/README.md`.
+
+## Четвёртый этап: команды и два proxy
+
+`teams.integration.test.js` входит в `npm test`: создание/редактирование с
+участниками, проверка входных данных, повторные и параллельные добавления,
+сохранность исторических дублей, удаление заполненной команды и реальные
+SQL-сбои с полным откатом. Схема тестовой БД не требует миграции.
+
+Для настоящей цепочки Nginx/Vite → Express → PostgreSQL есть необязательный
+профиль `proxy`. Он публикует **только случайные loopback-порты** тестовых
+сервисов; базовые backend-тесты портов по-прежнему не публикуют.
+Выбранное имя проекта должно быть свободно.
+
+```sh
+docker compose --env-file /dev/null -f docker-compose.recovery-test.yml -p itrum-proxy-check --profile proxy up -d --build proxy-app proxy-nginx proxy-vite
+docker compose --env-file /dev/null -f docker-compose.recovery-test.yml -p itrum-proxy-check exec -T proxy-nginx nginx -t
+docker compose --env-file /dev/null -f docker-compose.recovery-test.yml -p itrum-proxy-check exec -T proxy-app node tests/proxy-smoke.js
+```
+
+Скрипт проверяет имя/хост/роль тестовой БД до записи, создаёт синтетического
+пользователя с scrypt и проверяет оба proxy: SPA deep link, вход, cookie/Bearer,
+команды, восстановление, Swagger, 401/403/404, 429/Retry-After. Секреты рабочей
+среды не используются. Дополнительное разрешённое имя Vite `proxy-vite` задано
+только в тестовом профиле; unrestricted allowedHosts не используется.
+
+Браузерная проверка реальной цепочки описана в
+[frontend/tests/README.md](../../frontend/tests/README.md).
+Проверить временную недоступность backend можно остановкой **только** `proxy-app`:
+Nginx должен вернуть 502, Vite — 500, а `/teams` продолжить отдавать HTML с 200.
+Затем запустите `proxy-app` снова. Рабочий `app` останавливать для теста нельзя.
+
+После проверки:
+
+```sh
+docker compose --env-file /dev/null -f docker-compose.recovery-test.yml -p itrum-proxy-check --profile proxy down
+```
+
+Опция удаления volumes не применяется. Все данные тестовой PostgreSQL временные.

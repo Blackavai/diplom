@@ -13,15 +13,26 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import api, { apiErrorMessage } from '@/lib/api';
-import React, { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover.tsx";
 import {CheckIcon} from "lucide-react";
 import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from "@/components/ui/command.tsx";
 import { useNotification } from './Notification.tsx';
 import imgTeamNone from '@/assets/team_none.png';
 
-export function SelectUser({ selectedUsers, setSelectedUsers }) {
-    const [users, setUsers] = useState([]);
+type TeamUser = { id: number; fname: string; lname: string; post?: string };
+type Team = { id: number; name_team: string; description_team: string | null };
+type SelectionProps = {
+    selectedUsers: TeamUser[];
+    setSelectedUsers: Dispatch<SetStateAction<TeamUser[]>>;
+    excludedUsers?: TeamUser[];
+    disabled?: boolean;
+};
+
+export function SelectUser({ selectedUsers, setSelectedUsers, excludedUsers = [], disabled = false }: SelectionProps) {
+    const [users, setUsers] = useState<TeamUser[]>([]);
+    const [error, setError] = useState(false);
     const [open, setOpen] = useState(false);
 
     useEffect(() => {
@@ -32,10 +43,12 @@ export function SelectUser({ selectedUsers, setSelectedUsers }) {
             })
             .catch((error) => {
                 console.log(apiErrorMessage(error));
+                setError(true);
             });
     }, []);
 
-    const handleSelectUser = (user) => {
+    const handleSelectUser = (user: TeamUser) => {
+        if (disabled || excludedUsers.some((member) => member.id === user.id)) return;
         setSelectedUsers((prev) => {
             if (prev.some((u) => u.id === user.id)) {
                 return prev.filter((u) => u.id !== user.id);
@@ -51,6 +64,7 @@ export function SelectUser({ selectedUsers, setSelectedUsers }) {
                 <Button
                     variant="outline"
                     role="combobox"
+                    disabled={disabled}
                     aria-expanded={open}
                     className="flex w-30"
                 >
@@ -62,9 +76,9 @@ export function SelectUser({ selectedUsers, setSelectedUsers }) {
                 <Command>
                     <CommandInput placeholder="Начните вводить ФИО" />
                     <CommandList>
-                        <CommandEmpty>Пользователь не найден</CommandEmpty>
+                        <CommandEmpty>{error ? "Не удалось загрузить пользователей. Откройте страницу повторно" : "Пользователь не найден"}</CommandEmpty>
                         <CommandGroup>
-                            {users.map((user) => (
+                            {users.filter((user) => !excludedUsers.some((member) => member.id === user.id)).map((user) => (
                                 <CommandItem
                                     key={user.id}
                                     onSelect={() => handleSelectUser(user)}
@@ -86,65 +100,96 @@ export function SelectUser({ selectedUsers, setSelectedUsers }) {
     );
 }
 
-export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams }) {
-    const [dataTeam, setDataTeam] = useState([]);
+type TeamMenuProps = {
+    team: Team;
+    deleteTeam: (id: number) => Promise<void>;
+    updateTeamData: (team: Team) => void;
+    refreshTeams: () => void;
+};
+
+export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams }: TeamMenuProps) {
+    const [dataTeam, setDataTeam] = useState<TeamUser[]>([]);
     const [open, setOpen] = useState(false);
     const [teamName, setTeamName] = useState(team.name_team);
-    const [teamDescription, setTeamDescription] = useState(team.description_team);
-    const [selectNewUser, setSelectNewUser] = useState([]);
+    const [teamDescription, setTeamDescription] = useState(team.description_team ?? "");
+    const [selectNewUser, setSelectNewUser] = useState<TeamUser[]>([]);
+    const [saving, setSaving] = useState(false);
+    const busy = useRef(false);
+    const [loading, setLoading] = useState(false);
+    const [membersError, setMembersError] = useState(false);
+    const [revision, setRevision] = useState(0);
     const { addNotification } = useNotification();
 
     useEffect(() => {
-        api
-            .get(`/teams/view/${team.id}`)
-            .then((response) => {
-                // console.log(response);
-                setDataTeam(response.data.view);
+        if (!open) return;
+        let active = true;
+        setTeamName(team.name_team);
+        setTeamDescription(team.description_team ?? "");
+        setSelectNewUser([]);
+        setDataTeam([]);
+        setLoading(true);
+        setMembersError(false);
+        api.get(`/teams/view/${team.id}`, { timeout: 15000 })
+            .then((response) => { if (active) setDataTeam(response.data.view); })
+            .catch((error: unknown) => {
+                if (active) setMembersError(true);
+                console.error(apiErrorMessage(error));
             })
-            .catch((error) => {
-                console.log(apiErrorMessage(error));
-            });
-    }, [team.id]);
+            .finally(() => { if (active) setLoading(false); });
+        return () => { active = false; };
+    }, [open, team.id, team.name_team, team.description_team, revision]);
 
-    const deleteUserTeam = (id_user) => {
-        api
-            .post(`/teams/delUserTeam/${team.id}/${id_user}`)
-            .then((response) => {
-                // console.log("Участник удален:", response.data);
-                setDataTeam((prevData) => prevData.filter(member => member.id !== id_user));
-                addNotification('success', 'Участник удалён из команды');
-            })
-            .catch((error) => {
-                console.error("Ошибка при удалении участника:", apiErrorMessage(error));
-                addNotification('error', 'Ошибка при удалении участника');
-            });
-    };
-
-    const saveTeamData = async (id_team) => {
+    const deleteUserTeam = async (id_user: number) => {
+        if (busy.current) return;
+        busy.current = true;
+        setSaving(true);
         try {
-            const response = await api.put(`/teams/edit/${id_team}`, {
-                newNameTeam: teamName,
-                descriptionTeam: teamDescription,
-            });
-
-            const userResponse = await api.post(`/teams/newUserTeam/${id_team}`, {
-                usersId: selectNewUser.map(user => user.id),
-            });
-
-            // console.log("Пользователи добавлены в команду:", userResponse.data);
-            addNotification('success', 'Пользователи добавлены в команду');
-            // console.log("Данные команды обновлены:", response.data);
-            addNotification('success', 'Данные команды обновлены');
-            updateTeamData({ id: id_team, name_team: teamName, description_team: teamDescription });
-            refreshTeams();
+            await api.post(`/teams/delUserTeam/${team.id}/${id_user}`, {}, { timeout: 15000 });
+            setDataTeam((previous) => previous.filter((member) => member.id !== id_user));
+            addNotification('success', 'Участник удалён из команды');
         } catch (error) {
-            console.error("Ошибка при сохранении данных команды:", apiErrorMessage(error));
-            addNotification('error', 'Ошибка при сохранении данных команды');
+            console.error(apiErrorMessage(error));
+            addNotification('error', 'Ошибка при удалении участника');
+        } finally {
+            busy.current = false;
+            setSaving(false);
         }
     };
 
+    const saveTeamData = async () => {
+        if (busy.current || loading || membersError) return;
+        busy.current = true;
+        setSaving(true);
+        try {
+            const response = await api.put(`/teams/edit/${team.id}`, {
+                newNameTeam: teamName,
+                descriptionTeam: teamDescription,
+                usersId: selectNewUser.map((user) => user.id),
+            }, { timeout: 15000 });
+            setSelectNewUser([]);
+            updateTeamData(response.data.edit);
+            setRevision((value) => value + 1);
+            refreshTeams();
+            addNotification('success', 'Данные команды обновлены');
+        } catch (error) {
+            console.error(apiErrorMessage(error));
+            addNotification('error', 'Ошибка при сохранении данных команды');
+        } finally {
+            busy.current = false;
+            setSaving(false);
+        }
+    };
+
+    const removeTeam = async () => {
+        if (busy.current) return;
+        busy.current = true;
+        setSaving(true);
+        try { await deleteTeam(team.id); }
+        finally { busy.current = false; setSaving(false); }
+    };
+
     return (
-        <Dialog>
+        <Dialog open={open} onOpenChange={(value) => { if (!busy.current) setOpen(value); }}>
             <DialogTrigger asChild>
                 <img src={arrow} alt={"arrow right "} width={"60px"} className={"box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) arrowAnim adaptArrow"} />
             </DialogTrigger>
@@ -180,15 +225,15 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
                             {dataTeam.length > 0 || selectNewUser.length > 0 ? (
                                 <>
                                     {dataTeam.map((member, index) => (
-                                        <li key={index}>
+                                        <li key={`${member.id}-${index}`}>
                                             <span>{member.fname + " " + member.lname}</span>
-                                            <button onClick={() => deleteUserTeam(member.id)} key={member.id}>
+                                            <button disabled={saving || loading} onClick={() => deleteUserTeam(member.id)} key={member.id}>
                                                 <img src={delTeamUserButt} alt={''} className="w-6 h-6 "/>
                                             </button>
                                         </li>
                                     ))}
-                                    {selectNewUser.map((member, index) => (
-                                        <li key={index} className={'flex justify-between'}>
+                                    {selectNewUser.map((member) => (
+                                        <li key={member.id} className={'flex justify-between'}>
                                             {member.fname + " " + member.lname}
                                         </li>
                                     ))}
@@ -197,12 +242,14 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
                                 <li>Участников нет</li>
                             )}
                         </ol>
-                        <SelectUser selectedUsers={selectNewUser} setSelectedUsers={setSelectNewUser} />
+                        {loading && <p role="status">Загрузка участников…</p>}
+                        {membersError && <div role="alert">Не удалось загрузить состав команды. <button onClick={() => setRevision((value) => value + 1)}>Повторить</button></div>}
+                        <SelectUser selectedUsers={selectNewUser} setSelectedUsers={setSelectNewUser} excludedUsers={dataTeam} disabled={saving || loading || membersError} />
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button type="submit" variant={"yellow"} className={'btnInteractive'} onClick={() => saveTeamData(team.id)}>Сохранить</Button>
-                    <Button type="submit" variant={"red"} className={'btnInteractive'} onClick={() => deleteTeam(team.id)}>Удалить команду</Button>
+                    <Button type="submit" variant={"yellow"} className={'btnInteractive'} disabled={saving || loading || membersError} onClick={saveTeamData}>{saving ? "Сохранение…" : "Сохранить"}</Button>
+                    <Button type="submit" variant={"red"} className={'btnInteractive'} disabled={saving} onClick={removeTeam}>Удалить команду</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -210,44 +257,47 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
 }
 
 
-export function DialogAddTeam({ refreshTeams }) {
-    const [newUserTeam, setNewUserTeam] = useState([]);
+export function DialogAddTeam({ refreshTeams }: { refreshTeams: () => void }) {
+    const [newUserTeam, setNewUserTeam] = useState<TeamUser[]>([]);
     const [teamName, setTeamName] = useState('');
     const [teamDescription, setTeamDescription] = useState('');
     const [open, setOpen] = useState(false);
     const { addNotification } = useNotification();
 
-    const handleRemoveUser = (userId) => {
+    const [saving, setSaving] = useState(false);
+    const busy = useRef(false);
+
+    const handleRemoveUser = (userId: number) => {
         setNewUserTeam((prev) => prev.filter((user) => user.id !== userId));
     };
 
-    const addTeamData = () => {
-        api
-            .post(`/teams/create`, {
+    const addTeamData = async () => {
+        if (busy.current) return;
+        busy.current = true;
+        setSaving(true);
+        try {
+            await api.post('/teams/create', {
                 nameTeam: teamName,
                 descriptionTeam: teamDescription,
-            })
-            .then((response) => {
-                const id_team = response.data.task.id;
-                addNotification('success', 'Команда создана');
-                return api.post(`/teams/newUserTeam/${id_team}`, {
-                    usersId: newUserTeam.map(user => user.id),
-                });
-            })
-            .then((userResponse) => {
-                // console.log("Пользователи добавлены в команду:", userResponse.data);
-                refreshTeams();
-                setOpen(false);
-                addNotification('success', 'Пользователи добавлены в команду');
-            })
-            .catch((error) => {
-                console.error("Ошибка при сохранении данных команды:", apiErrorMessage(error));
-                addNotification('error', 'Ошибка при сохранении данных команды');
-            });
+                usersId: newUserTeam.map((user) => user.id),
+            }, { timeout: 15000 });
+            refreshTeams();
+            setOpen(false);
+            setTeamName('');
+            setTeamDescription('');
+            setNewUserTeam([]);
+            addNotification('success', 'Команда создана');
+        } catch (error) {
+            console.error(apiErrorMessage(error));
+            addNotification('error', 'Ошибка при сохранении данных команды');
+        } finally {
+            busy.current = false;
+            setSaving(false);
+        }
     };
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(value) => { if (!busy.current) setOpen(value); }}>
             <DialogTrigger asChild>
                 <button type={'button'} className={'addTeam'}></button>
             </DialogTrigger>
@@ -287,18 +337,18 @@ export function DialogAddTeam({ refreshTeams }) {
                                 {newUserTeam.map((user) => (
                                     <li key={user.id}>
                                         {user.fname} {user.lname}
-                                        <button onClick={() => handleRemoveUser(user.id)}>
+                                        <button disabled={saving} onClick={() => handleRemoveUser(user.id)}>
                                             <img src={delTeamUserButt} alt={''} className="w-6 h-6 btnInteractive"/>
                                         </button>
                                     </li>
                                 ))}
                             </ol>
                         )}
-                        <SelectUser selectedUsers={newUserTeam} setSelectedUsers={setNewUserTeam} />
+                        <SelectUser selectedUsers={newUserTeam} setSelectedUsers={setNewUserTeam} disabled={saving} />
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button type="button" variant={"yellow"} onClick={addTeamData} className={'btnInteractive'}>Сохранить</Button>
+                    <Button type="button" variant={"yellow"} onClick={addTeamData} disabled={saving} className={'btnInteractive'}>{saving ? "Сохранение…" : "Сохранить"}</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -307,7 +357,7 @@ export function DialogAddTeam({ refreshTeams }) {
 
 
 function Teams() {
-    const [data, setData] = useState([]);
+    const [data, setData] = useState<Team[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const { addNotification } = useNotification();
 
@@ -326,11 +376,10 @@ function Teams() {
             });
     };
 
-    const deleteTeam = (id_team) => {
-        api
-            .delete(`/teams/delete/${id_team}`)
-            .then((response) => {
-                // console.log("Команда удалена:", response.data);
+    const deleteTeam = async (id_team: number) => {
+        await api
+            .delete(`/teams/delete/${id_team}`, { timeout: 15000 })
+            .then(() => {
                 setData((prevData) => prevData.filter(team => team.id !== id_team));
                 addNotification('success', 'Команда успешно удалена');
             })
@@ -340,7 +389,7 @@ function Teams() {
             });
     };
 
-    const updateTeamData = (updatedTeam) => {
+    const updateTeamData = (updatedTeam: Team) => {
         setData((prevData) =>
             prevData.map(team =>
                 team.id === updatedTeam.id ? updatedTeam : team

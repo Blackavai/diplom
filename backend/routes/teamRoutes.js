@@ -68,7 +68,7 @@ router.get("/", teamController.getAllTeam);
  *   post:
  *     tags: [Teams]
  *     summary: Создать новую команду
- *     description: Создает новую команду с указанным названием и описанием
+ *     description: Атомарно создаёт команду и необязательных участников usersId; повторяющиеся id пропускаются
  *     requestBody:
  *       required: true
  *       content:
@@ -82,14 +82,21 @@ router.get("/", teamController.getAllTeam);
  *               descriptionTeam:
  *                 type: string
  *                 example: "Описание команды"
+ *               usersId:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                   minimum: 1
+ *                 description: Необязательные начальные участники
  *             required:
  *               - nameTeam
- *               - descriptionTeam
  *     responses:
  *       200:
  *         description: Команда успешно создана
  *       400:
  *         description: Не указано название команды или описание команды
+ *       409:
+ *         description: Конфликт связанных данных; повторите после обновления
  *       500:
  *         description: Внутренняя ошибка сервера
  */
@@ -102,7 +109,7 @@ router.post("/create", teamController.createTeam);
  *   delete:
  *     tags: [Teams]
  *     summary: Удалить команду
- *     description: Удаляет команду и всех ее участников
+ *     description: В одной транзакции удаляет связи участников и команду. Самих пользователей, задачи и отчёты не удаляет
  *     parameters:
  *       - in: path
  *         name: id
@@ -121,9 +128,14 @@ router.post("/create", teamController.createTeam);
  *                 message:
  *                   type: string
  *                 team:
- *                   $ref: '#/components/schemas/Team'
+ *                   type: object
+ *                   description: Результат удаления связей команды (command, rowCount, rows)
  *       404:
  *         description: Команда не найдена
+ *       400:
+ *         description: Некорректные данные запроса
+ *       409:
+ *         description: Конфликт связанных данных; повторите после обновления
  *       500:
  *         description: Внутренняя ошибка сервера
  */
@@ -135,7 +147,7 @@ router.delete("/delete/:id", teamController.delTeam);
  *   put:
  *     tags: [Teams]
  *     summary: Редактировать команду
- *     description: Изменяет название и описание команды
+ *     description: Атомарно изменяет название/описание и добавляет необязательных участников usersId; существующие связи сохраняются
  *     parameters:
  *       - in: path
  *         name: id
@@ -156,6 +168,12 @@ router.delete("/delete/:id", teamController.delTeam);
  *               descriptionTeam:
  *                 type: string
  *                 example: "Новое описание"
+ *               usersId:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                   minimum: 1
+ *                 description: Необязательные новые участники
  *             required:
  *               - newNameTeam
  *     responses:
@@ -164,9 +182,18 @@ router.delete("/delete/:id", teamController.delTeam);
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Team'
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 edit:
+ *                   $ref: '#/components/schemas/Team'
  *       404:
  *         description: Команда не найдена
+ *       400:
+ *         description: Некорректные данные запроса
+ *       409:
+ *         description: Конфликт связанных данных; повторите после обновления
  *       500:
  *         description: Внутренняя ошибка сервера
  */
@@ -178,7 +205,7 @@ router.put("/edit/:id", teamController.editTeam);
  *   post:
  *     tags: [Teams]
  *     summary: Добавить пользователей в команду
- *     description: Добавляет одного или нескольких пользователей в команду
+ *     description: Атомарно добавляет пользователей; повторные id и существующее членство пропускаются. Пустой массив допустим; неверный пользователь отклоняет весь запрос
  *     parameters:
  *       - in: path
  *         name: id
@@ -206,11 +233,20 @@ router.put("/edit/:id", teamController.editTeam);
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/TeamMember'
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 team:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/TeamMember'
  *       400:
  *         description: Не указаны ID пользователей
+ *       404:
+ *         description: Команда не найдена
+ *       409:
+ *         description: Конфликт связанных данных; повторите после обновления
  *       500:
  *         description: Внутренняя ошибка сервера
  */

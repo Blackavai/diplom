@@ -18,6 +18,8 @@ RUN npm run build
 # Этап 2: Раздача через Nginx
 FROM nginx:stable-alpine
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+ENV API_UPSTREAM=http://app:5000
+ENV NGINX_ENVSUBST_FILTER=^API_UPSTREAM$
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

@@ -21,7 +21,7 @@ const swaggerOptions = {
             description: "Бизнес-API требует Bearer JWT. Менеджер (роль 1) управляет всеми командами, сотрудниками, задачами, отпусками и принимает отчёты. Работник (роль 2) читает только свои задачи, команду и отпуск. Обе роли отправляют отчёты только по своим задачам. Вход и восстановление пароля публичны."
         },
         servers: [
-            { url: "http://localhost:5000", description: "Local server" }
+            { url: "/", description: "Текущий сервер (напрямую или через frontend proxy)" }
         ],
         components: {
             securitySchemes: {

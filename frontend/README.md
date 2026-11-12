@@ -1,84 +1,112 @@
-# Веб-панель для автоматизации ежедневных встреч
+# DailySync: локальный запуск
 
-## Описание проекта
+Проект поддерживает Docker Compose и два отдельных процесса frontend/backend.
+PostgreSQL остаётся в существующей Docker-инфраструктуре. Рабочую БД не нужно
+очищать, пересоздавать или повторно загружать из дампа для переключения способа запуска.
 
+Браузер в обоих вариантах обращается к `/api` на адресе frontend. Vite или Nginx
+проксирует запрос в backend. `/api-docs/` доступен через тот же frontend.
+Адрес backend не встраивается в JavaScript при сборке.
 
+## До запуска
 
-## Инструкция для запуска проекта
+Используйте зависимости из существующих lock-файлов (`npm ci`), а для Docker —
+существующие Dockerfile. Не переносите node_modules между разными ОС.
+В проекте используются Node 20 в Docker и PostgreSQL 17; обновление runtime —
+отдельная задача. Рабочие пароли после третьего этапа требуют согласованного
+перехода: [инструкция](../backend/scripts/README.md). Эта инструкция запуска
+не выполняет преобразование паролей и не включает временный plaintext-вход.
 
-### Способ 1 - ручной запуск
+## Вариант 1: Docker Compose
 
-Необходимо иметь установленные: 
- - Node.js (20.17 и выше)
- - PostgreSQL (17)
+Все команды выполняются из корня репозитория. Используйте существующий корневой
+`.env`: нужны `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`, `DB_HOST=postgres`,
+`JWT_SECRET`, `BACKEND_PORT`, `FRONTEND_PORT`. Значения секретов в инструкции
+не приводятся. Смена `JWT_SECRET` делает ранее выданные JWT недействительными.
 
-Клонируем репозитории в корневую папку проекта
-
-```
-./frontend
-git clone https://github.com/Blackavai/OggetoDailyBot
-
-./backend
-git clone https://github.com/Blackavai/Oggetto-backend
-```
-
-Прописываем `npm install` для установки необходимых пакетов
-
-Запуск проекта - `npm run build`
-
-Вывод в терминале при успешном старте
-
-Backend:
-```
-Сервер запущен на порту 5000
-Документация доступна по http://localhost:5000/api-docs
+```sh
+docker compose up -d --build
 ```
 
-Frontend:
-```
-  ➜  Local:   http://localhost:5173/
-  ➜  Network: use --host to expose
-```
-### Способ 2 - использование Docker
+Откройте `http://localhost:<FRONTEND_PORT>`; документация —
+`http://localhost:<FRONTEND_PORT>/api-docs/`.
 
-Клонируем репозитории в корневую папку проекта
+Nginx использует `API_UPSTREAM=http://app:<BACKEND_PORT>`, переданный Compose при
+старте контейнера. Внутри сети backend подключается к `postgres:5432`; `DB_PORT`
+в корневом `.env` задаёт опубликованный порт PostgreSQL на компьютере.
+После изменения порта/адреса назначения пересоздайте соответствующие контейнеры
+обычным `docker compose up -d --build`. Volumes удалять не нужно.
 
-```
-./frontend
-git clone https://github.com/Blackavai/OggetoDailyBot
+`itk_old.sql` остаётся существующим источником первой инициализации пустой БД;
+он содержит чувствительные данные (A05). Исправления этого этапа не заменяют
+его и не запускают его повторно для существующего volume.
 
-./backend
-git clone https://github.com/Blackavai/Oggetto-backend
-```
+## Вариант 2: два сервера из консоли
 
-В общей папке проекта вставить файл `docker-compose.yml`
-```dockerfile
-version: '3'
-services:
-  backend:
-    build:
-      context: ./backend
-    ports:
-      - "5000:5000"
-    networks:
-      - mynetwork
-  
-  frontend:
-    build:
-      context: ./frontend
-    ports:
-      - "5173:80"
-    networks:
-      - mynetwork
+PostgreSQL должен быть уже доступен через опубликованный локальный порт.
+Если существующий сервис остановлен, из корня можно запустить только его:
 
-networks:
-  mynetwork:
+```sh
+docker compose up -d postgres
 ```
 
-Запуск проекта
-`docker-compose up --build -d`
+При переключении с Docker-варианта освободите нужные порты frontend/backend,
+остановив соответствующие сервисы, если они занимают эти порты:
 
-## Стек технологий
+```sh
+docker compose stop frontend app
+```
 
+### Терминал 1 — backend
 
+Из каталога `backend`:
 
+```sh
+npm ci
+```
+
+Создайте **backend/.env** по образцу [backend/.env.example](../backend/.env.example).
+Не перезаписывайте существующий файл без проверки его настроек.
+Укажите данные существующей БД, `DB_HOST=127.0.0.1`, её опубликованный `DB_PORT`,
+согласованный `JWT_SECRET` и `PORT` backend (по умолчанию 5000).
+Корневой `.env` автоматически не загружается при запуске из `backend`.
+
+```sh
+npm start
+```
+
+### Терминал 2 — frontend
+
+Из каталога `frontend`:
+
+```sh
+npm ci
+```
+
+Если backend использует порт 5000, дополнительная настройка не нужна. Для другого
+порта создайте **frontend/.env** по образцу [.env.example](.env.example) и задайте,
+например, `API_PROXY_TARGET=http://127.0.0.1:5001`. После изменения настройки
+перезапустите Vite. Docker-имя `app` для двух процессов на компьютере не используется.
+
+```sh
+npm run dev
+```
+
+Откройте `http://localhost:5173`, документация — `http://localhost:5173/api-docs/`.
+Команда `npm run build` только собирает frontend, но не запускает сервер.
+Для просмотра сборки есть `npm run preview`; его API proxy использует ту же
+настройку `API_PROXY_TARGET`. Отдельную команду `npm start` для frontend не добавляли.
+
+## Границы локального сценария
+
+Публичный Axios-клиент входа/восстановления и защищённый клиент используют `/api`;
+Bearer и проверка роли сохраняются. Для UI запросы same-origin, отдельное разрешение
+CORS для порта Vite не требуется. Существующий CORS для прямых обращений к backend
+сохранён; произвольные cross-origin клиенты этим этапом не поддерживаются.
+
+Backend не доверяет `X-Forwarded-For`. Nginx перезаписывает его адресом соединения;
+для локального прокси лимит по IP общий для среды, лимит по аккаунту сохраняется.
+HTTPS, HttpOnly, отзыв JWT и внешний доступ — отдельные задачи. Публикация портов
+и bind существующих серверов этим этапом не ограничивались loopback автоматически.
+
+Проверки: [backend](../backend/tests/README.md), [frontend](tests/README.md).
