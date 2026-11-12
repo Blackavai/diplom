@@ -6,6 +6,14 @@ const AuthModel = {
         const result = await postgree.query('SELECT id, fname, lname, tg_id, post, role FROM users WHERE id = $1', [id]);
         return result.rows[0] || null;
     },
+    findPasswordById: async (id) => {
+        const result = await postgree.query('SELECT password FROM users WHERE id = $1', [id]);
+        return result.rows[0] || null;
+    },
+    upgradePassword: async (id, oldPassword, hash) => {
+        const result = await postgree.query('UPDATE users SET password = $1 WHERE id = $2 AND password = $3', [hash, id, oldPassword]);
+        return result.rowCount === 1;
+    },
     createUser: async (fname, lname, tg_id, post, role, pass) => {
         const query = 'INSERT INTO users (fname, lname, tg_id, role, post, password) VALUES ($1, $2, $3, $4, $5, $6)';
         const values = [fname, lname, tg_id, role, post, pass];

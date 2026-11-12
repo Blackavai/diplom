@@ -29,12 +29,17 @@ const LoginPage: React.FC = () => {
     const [recoveryToken, setRecoveryToken] = useState('');
     const [recoveryPending, setRecoveryPending] = useState(false);
     const recoveryBusy = useRef(false);
+    const [loginPending, setLoginPending] = useState(false);
+    const loginBusy = useRef(false);
     const navigate = useNavigate();
     const { addNotification } = useNotification();
 
     const authFunc = async () => {
+        if (loginBusy.current) return;
+        loginBusy.current = true;
+        setLoginPending(true);
         try {
-            const response = await publicApi.post('/auth/login', { tg_id, password }, { withCredentials: true });
+            const response = await publicApi.post('/auth/login', { tg_id, password }, { withCredentials: true, timeout: 15000 });
             const token = response.data.user.token;
 
             if (!token) {
@@ -51,6 +56,9 @@ const LoginPage: React.FC = () => {
             }
         } catch (error) {
             addNotification('error', errorMessage(error, 'Не удалось войти. Проверьте соединение.'));
+        } finally {
+            loginBusy.current = false;
+            setLoginPending(false);
         }
     };
 
@@ -114,8 +122,8 @@ const LoginPage: React.FC = () => {
     });
 
     const handlePasswordReset = () => runRecoveryRequest(async () => {
-        if (!newPassword.trim() || newPassword.length > 1024) {
-            addNotification('error', 'Введите пароль длиной до 1024 символов');
+        if (!newPassword.trim()) {
+            addNotification('error', 'Введите пароль');
             return;
         }
         if (newPassword !== confirmPassword) {
@@ -196,7 +204,6 @@ const LoginPage: React.FC = () => {
                                     type={'password'}
                                     value={newPassword}
                                     disabled={recoveryPending}
-                                    maxLength={1024}
                                     onChange={(e) => setNewPassword(e.target.value)}
                                     placeholder={'Новый пароль'}
                                 />
@@ -205,7 +212,6 @@ const LoginPage: React.FC = () => {
                                     type={'password'}
                                     value={confirmPassword}
                                     disabled={recoveryPending}
-                                    maxLength={1024}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                     placeholder={'Подтверждение пароля'}
                                 />
@@ -219,6 +225,7 @@ const LoginPage: React.FC = () => {
                         <input
                             type={'text'}
                             name={'tg_input'}
+                            disabled={loginPending}
                             onChange={(e) => setTgId(e.target.value)}
                             placeholder={'Логин'}
                         />
@@ -226,11 +233,12 @@ const LoginPage: React.FC = () => {
                         <input
                             type={'password'}
                             name={'pass_input'}
+                            disabled={loginPending}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder={'Пароль'}
                         />
-                        <button onClick={authFunc} className={'btnInteractive'}>Войти</button>
-                        <p onClick={() => { setIsRecoveryMode(true); setRecoverInput(true); }} style={{cursor: 'pointer'}}>Восстановление пароля</p>
+                        <button disabled={loginPending} onClick={authFunc} className={'btnInteractive'}>{loginPending ? 'Вход…' : 'Войти'}</button>
+                        <p onClick={() => { if (!loginBusy.current) { setIsRecoveryMode(true); setRecoverInput(true); } }} style={{cursor: 'pointer'}}>Восстановление пароля</p>
                     </div>
                 )}
             </div>

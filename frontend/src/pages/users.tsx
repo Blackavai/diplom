@@ -8,7 +8,8 @@ import {
 } from "@/components/ui/dialog.tsx";
 import pencil from "@/assets/editUser.png";
 import api, { apiErrorMessage } from '@/lib/api';
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import axios from 'axios';
 import {Button} from "@/components/ui/button.tsx";
 import {Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select.tsx";
 import { useNotification } from './Notification.tsx';
@@ -103,6 +104,8 @@ export function DialogDemo({ user, onDelete }) {
 }
 
 export function DialogAddUser() {
+    const [pending, setPending] = useState(false);
+    const busy = useRef(false);
     const [fname, setFname] = useState("");
     const [lname, setLname] = useState("");
     const [tg_id, setTgId] = useState("");
@@ -113,15 +116,19 @@ export function DialogAddUser() {
     const { addNotification } = useNotification();
 
     const addUserData = async () => {
+        if (busy.current) return;
+        if (!pass.trim()) { addNotification('error', 'Введите пароль'); return; }
+        busy.current = true;
+        setPending(true);
         try {
-            const response = await api.post(`/auth/createUser`, {
+            await api.post(`/auth/createUser`, {
                 fname,
                 lname,
                 tg_id,
                 post,
                 role: roleValue,
                 pass,
-            });
+            }, { timeout: 15000 });
 
             addNotification('success', 'Пользователь добавлен в систему');
 
@@ -134,7 +141,12 @@ export function DialogAddUser() {
             setRoleValue(null);
         } catch (error) {
             console.error("Ошибка при сохранении данных пользователя:", apiErrorMessage(error));
-            addNotification('error', 'Ошибка при сохранении данных пользователя');
+            const message = axios.isAxiosError<{ message?: string }>(error) && typeof error.response?.data?.message === 'string'
+                ? error.response.data.message : 'Ошибка при сохранении данных пользователя';
+            addNotification('error', message);
+        } finally {
+            busy.current = false;
+            setPending(false);
         }
     };
 
@@ -235,8 +247,8 @@ export function DialogAddUser() {
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button type="submit" variant={"yellow"} className={'btnInteractive'} onClick={addUserData}>
-                        Добавить пользователя
+                    <Button disabled={pending} type="submit" variant={"yellow"} className={'btnInteractive'} onClick={addUserData}>
+                        {pending ? 'Сохранение…' : 'Добавить пользователя'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

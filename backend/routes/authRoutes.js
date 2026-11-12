@@ -10,7 +10,7 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *     tags: [Authorization]
  *     security: []
  *     summary: Вход пользователя
- *     description: Позволяет пользователю войти в систему
+ *     description: Проверяет пароль через scrypt; временный вход со старым паролем разрешён только до явно заданного LEGACY_PASSWORD_LOGIN_UNTIL и преобразует запись условным UPDATE. Новых ограничений длины нет, действует существующий лимит JSON. На аккаунт 10 запросов, на IP 60 запросов за 15 минут, включая успешные входы.
  *     requestBody:
  *       required: true
  *       content:
@@ -51,7 +51,11 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *                     token:
  *                       type: string
  *       400:
- *         description: Пользователь не найден или неверный пароль
+ *         description: Единое сообщение о неверном логине или пароле
+ *       429:
+ *         description: Лимит попыток входа, Retry-After 900 секунд
+ *       503:
+ *         description: Очередь scrypt заполнена, Retry-After 1 секунда
  *       500:
  *         description: Внутренняя ошибка сервера
  */
@@ -152,7 +156,7 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *     tags: [Authorization]
  *     security: []
  *     summary: Установить новый пароль по одноразовому разрешению
- *     description: Разрешение привязано к пользователю, действует 5 минут и расходуется до записи в БД. После ошибки записи требуется повторное подтверждение. Перезапуск backend отменяет разрешения. Ранее выданные JWT не отзываются.
+ *     description: Разрешение привязано к пользователю, действует 5 минут и расходуется до записи в БД. После ошибки записи требуется повторное подтверждение. Перезапуск backend отменяет разрешения. Новый пароль сохраняется как scrypt-хеш без ограничения длины в символах; действует лимит JSON-запроса. Ранее выданные JWT не отзываются.
  *     requestBody:
  *       required: true
  *       content:
@@ -168,7 +172,6 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *               textNewPassword:
  *                 type: string
  *                 minLength: 1
- *                 maxLength: 1024
  *               recoveryToken:
  *                 type: string
  *                 pattern: '^[a-f0-9]{64}$'

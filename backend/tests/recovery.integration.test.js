@@ -18,6 +18,7 @@ test('recovery and safe user DTO over HTTP with synthetic PostgreSQL', {
     const express = require('express');
     const AuthModel = require('../models/authModel');
     const UserModel = require('../models/userModel');
+    const { verifyPassword, classifyPassword } = require('../utils/passwords');
     const { recovery, createPasswordRecovery } = require('../utils/passwordRecovery');
     let time = 1000;
     t.beforeEach(() => {
@@ -63,6 +64,12 @@ test('recovery and safe user DTO over HTTP with synthetic PostgreSQL', {
     async function passwordOf(user) {
         return (await pool.query('SELECT password FROM users WHERE id = $1', [user.id])).rows[0].password;
     }
+    async function assertPassword(user, password) {
+        const stored = await passwordOf(user);
+        assert.equal(classifyPassword(stored), 'scrypt');
+        assert.notEqual(stored, password);
+        assert.equal((await verifyPassword(password, stored)).matches, true);
+    }
     async function grant(user) {
         const response = await post('/api/auth/recAns', { tg_id: user.tg_id, secAns: user.answer });
         assert.equal(response.status, 200);
@@ -97,11 +104,11 @@ test('recovery and safe user DTO over HTTP with synthetic PostgreSQL', {
         assert.equal(changed.status, 200);
         assert.equal(changed.body.success, true);
         assert.deepEqual(Object.keys(changed.body).sort(), ['message', 'success']);
-        assert.equal(await passwordOf(user), 'synthetic-new-password');
+        await assertPassword(user, 'synthetic-new-password');
         assert.equal((await post('/api/auth/login', { tg_id: user.tg_id, password: 'synthetic-old-password' })).status, 400);
         assert.equal((await post('/api/auth/login', { tg_id: user.tg_id, password: 'synthetic-new-password' })).status, 200);
         assert.equal((await reset(user, answer.body.recoveryToken, 'replayed')).status, 403);
-        assert.equal(await passwordOf(user), 'synthetic-new-password');
+        await assertPassword(user, 'synthetic-new-password');
     });
 
     await t.test('invalid body types, empty answers and unknown users cannot obtain a grant', async () => {
@@ -141,7 +148,7 @@ test('recovery and safe user DTO over HTTP with synthetic PostgreSQL', {
             textNewPassword: 'synthetic-owner-password', recoveryToken: token
         });
         assert.equal(result.status, 200);
-        assert.equal(await passwordOf(owner), 'synthetic-owner-password');
+        await assertPassword(owner, 'synthetic-owner-password');
         assert.equal(await passwordOf(other), 'synthetic-old-password');
     });
 
@@ -161,13 +168,13 @@ test('recovery and safe user DTO over HTTP with synthetic PostgreSQL', {
         const token = await grant(user);
         const results = await Promise.all([reset(user, token, 'first-password'), reset(user, token, 'second-password')]);
         assert.deepEqual(results.map((r) => r.status).sort(), [200, 403]);
-        assert.equal(await passwordOf(user), results[0].status === 200 ? 'first-password' : 'second-password');
+        await assertPassword(user, results[0].status === 200 ? 'first-password' : 'second-password');
     });
 
     await t.test('invalid passwords do not consume a valid grant', async () => {
         const user = await createUser();
         const token = await grant(user);
-        for (const password of [null, '', '   ', {}, 'a'.repeat(1025)]) {
+        for (const password of [null, '', '   ', {}, false]) {
             assert.equal((await reset(user, token, password)).status, 400);
         }
         assert.equal(await passwordOf(user), 'synthetic-old-password');
@@ -190,7 +197,7 @@ test('recovery and safe user DTO over HTTP with synthetic PostgreSQL', {
         const token = await grant(user);
         const duplicate = await createUser({ tg_id: user.tg_id });
         assert.equal((await reset(user, token)).status, 200);
-        assert.equal(await passwordOf(user), 'synthetic-new-password');
+        await assertPassword(user, 'synthetic-new-password');
         assert.equal(await passwordOf(duplicate), 'synthetic-old-password');
     });
 

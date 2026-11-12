@@ -1,8 +1,18 @@
 const AuthModel = require("../models/authModel");
-const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const postgree = require("../db");
 const { recovery, isNonEmptyString } = require('../utils/passwordRecovery');
+const { hashPassword, verifyPassword, isValidPassword, legacyLoginAllowed } = require('../utils/passwords');
+const { loginAttempts } = require('../utils/loginAttempts');
+
+const invalidCredentials = (res) => res.status(400).json({ message: 'Неверный логин или пароль' });
+function authFailure(res, error) {
+    if (error?.code === 'PASSWORD_HASH_BUSY') {
+        res.set('Retry-After', '1');
+        return res.status(503).json({ message: 'Сервер занят. Повторите позже.' });
+    }
+    console.error('Ошибка операции с учётными данными');
+    return res.status(500).json({ message: 'Ошибка сервера' });
+}
 
 function validateRecoveryRequest(req, res) {
     res.set('Cache-Control', 'no-store');
@@ -20,18 +30,19 @@ function validateRecoveryRequest(req, res) {
 
 const AuthController = {
     insertNewUser: async (req, res) => {
+        res.set('Cache-Control', 'no-store');
         try {
-            const { fname, lname, tg_id, post, role, pass } = req.body;
+            const { fname, lname, tg_id, post, role, pass } = req.body || {};
+            if (!isValidPassword(pass)) return res.status(400).json({ message: 'Введите пароль' });
             const existingUser = await AuthModel.findUserByTGid(tg_id);
             if (existingUser) {
                 return res.status(400).json({ message: "Пользователь с таким id уже существует." });
             }
-            // const hashedPassword = await bcrypt.hash(password, 10);
-            const newUser = await AuthModel.createUser(fname, lname, tg_id, post, role, pass);
+            const hash = await hashPassword(pass);
+            const newUser = await AuthModel.createUser(fname, lname, tg_id, post, role, hash);
             return res.status(201).json({ message: "Пользователь успешно зарегистрирован", user: newUser });
         } catch (err) {
-            console.error(err);
-            return res.status(500).json({ message: "Ошибка сервера" });
+            return authFailure(res, err);
         }
     },
 
@@ -47,25 +58,27 @@ const AuthController = {
     },
 
     loginUser: async (req, res) => {
+        res.set('Cache-Control', 'no-store');
         try {
             const { tg_id, password } = req.body || {};
-            if (!isNonEmptyString(tg_id) || typeof password !== 'string' || !password.trim()) {
-                return res.status(400).json({ message: 'Введите логин и пароль' });
+            const validAccount = isNonEmptyString(tg_id);
+            if (!loginAttempts.allowAttempt(validAccount ? tg_id : null, req.ip || req.socket?.remoteAddress || 'unknown')) {
+                res.set('Retry-After', '900');
+                return res.status(429).json({ message: 'Слишком много попыток входа. Повторите позже.' });
             }
+            if (!validAccount || !isValidPassword(password)) return invalidCredentials(res);
             const user = await AuthModel.findUserByTGid(tg_id);
-
-            if (!user) {
-                return res.status(400).json({ message: "Пользователь не найден." });
-            }
-
-            // if(user.role != 1){
-            //     return res.status(400).json({ message: "Пользователь не является менеджером" });
-            // }
-
-            // const isMatch = await bcrypt.compare(password, user.password);
-            const isMatch = password === user.password;
-            if (!isMatch) {
-                return res.status(400).json({ message: "Неверный пароль." });
+            const result = await verifyPassword(password, user?.password, { allowLegacy: legacyLoginAllowed() });
+            if (!user || !result.matches) return invalidCredentials(res);
+            if (result.needsUpgrade) {
+                if (!legacyLoginAllowed()) return invalidCredentials(res);
+                const hash = await hashPassword(password);
+                if (!legacyLoginAllowed()) return invalidCredentials(res);
+                if (!await AuthModel.upgradePassword(user.id, user.password, hash)) {
+                    // Another login or reset may have changed the credential while hashing.
+                    const current = await AuthModel.findPasswordById(user.id);
+                    if (!(await verifyPassword(password, current?.password)).matches) return invalidCredentials(res);
+                }
             }
 
             const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
@@ -102,8 +115,7 @@ const AuthController = {
                     token: token
                 } });
         } catch (err) {
-            console.error(err);
-            return res.status(500).json({ message: "Ошибка сервера" });
+            return authFailure(res, err);
         }
     },
     protected: async (req, res) => {
@@ -156,17 +168,16 @@ const AuthController = {
     newPass: async (req, res) => {
         if (!validateRecoveryRequest(req, res)) return;
         const { tg_id, textNewPassword, recoveryToken } = req.body;
-        if (!isNonEmptyString(textNewPassword, 1024)) return res.status(400).json({ message: 'Введите пароль длиной до 1024 символов' });
+        if (!isValidPassword(textNewPassword)) return res.status(400).json({ message: 'Введите пароль' });
         const userId = recovery.consume(recoveryToken, tg_id);
         if (userId === null) return res.status(403).json({ message: 'Подтвердите восстановление пароля заново' });
         try {
-            // const hashedPassword = await bcrypt.hash(textNewPassword, 10);
-            const newPasswords = await AuthModel.newPassword(userId, tg_id, textNewPassword);
+            const hash = await hashPassword(textNewPassword);
+            const newPasswords = await AuthModel.newPassword(userId, tg_id, hash);
             if (!newPasswords) return res.status(403).json({ message: 'Подтвердите восстановление пароля заново' });
             return res.status(200).json({ message: "Пароль успешно изменён", success: true });
         } catch (err) {
-            console.error('Ошибка смены пароля при восстановлении');
-            return res.status(500).json({ message: 'Ошибка сервера. Подтвердите восстановление заново.' });
+            return authFailure(res, err);
         }
     }
 };

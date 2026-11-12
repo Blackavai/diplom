@@ -26,6 +26,11 @@ const interceptionErrors = [];
 let mode = 'worker';
 let holdSession = false;
 let pendingSessions = [];
+let holdLogin = false;
+let holdCreate = false;
+let pendingLogins = [];
+let pendingCreates = [];
+let expectedPassword;
 const actor = () => ({ id: mode === 'manager' || mode === 'management403' ? 1 : 2,
     role: mode === 'manager' || mode === 'management403' ? 1 : 2,
     fname: 'Synthetic', lname: 'Test', tg_id: 'synthetic-test', post: 'Test' });
@@ -41,14 +46,28 @@ async function respond(event, status, data) {
 async function intercept(event) {
     const path = new URL(event.request.url).pathname;
     if (event.request.method === 'OPTIONS') return respond(event, 204, null);
-    records.push({ path, hasBearer: /^Bearer /.test(event.request.headers.Authorization || event.request.headers.authorization || '') });
+    const body = event.request.postData ? JSON.parse(event.request.postData) : {};
+    const password = body.password ?? body.pass ?? body.textNewPassword;
+    records.push({ path, hasBearer: /^Bearer /.test(event.request.headers.Authorization || event.request.headers.authorization || ''),
+        passwordChars: typeof password === 'string' ? password.length : undefined });
+    if (expectedPassword !== undefined && password !== undefined) assert.equal(password, expectedPassword);
     if (path === '/api/auth/protected') {
         if (holdSession) { pendingSessions.push(event); return; }
         if (mode === 'expired') return respond(event, 401, { message: 'Недействительная сессия' });
         if (mode === 'unavailable') return respond(event, 500, { message: 'Ошибка сервера' });
         return respond(event, 200, { user: actor() });
     }
-    if (path === '/api/auth/login') return respond(event, 200, { user: { ...actor(), token: 'synthetic-session' } });
+    if (path === '/api/auth/login') {
+        if (holdLogin) { pendingLogins.push(event); return; }
+        return respond(event, 200, { user: { ...actor(), token: 'synthetic-session' } });
+    }
+    if (path === '/api/auth/createUser') {
+        if (holdCreate) { pendingCreates.push(event); return; }
+        return respond(event, 201, { message: 'Пользователь успешно зарегистрирован' });
+    }
+    if (path === '/api/auth/recPass') return respond(event, 200, { recoverPassword: { questions: 'Synthetic question?' } });
+    if (path === '/api/auth/recAns') return respond(event, 200, { recoveryToken: 'a'.repeat(64), expiresIn: 300 });
+    if (path === '/api/auth/recPass/newPass') return respond(event, 200, { success: true });
     if (mode === 'task401' && path.endsWith('/tasks')) return respond(event, 401, { message: 'Недействительная сессия' });
     if (mode === 'management403' && path === '/api/users') return respond(event, 403, { message: 'Доступ запрещён' });
     if (path === '/api/users') return respond(event, 200, []);
@@ -87,6 +106,12 @@ const navigate = (path) => call('Page.navigate', { url: origin + path });
 const cookie = (name, value) => call('Network.setCookie', { name, value, url: origin, path: '/' });
 const clearCookies = () => call('Network.clearBrowserCookies');
 const hasToken = () => evaluate("document.cookie.split(';').some(part => part.trim().startsWith('token='))");
+const clickButton = (text) => evaluate(`Array.from(document.querySelectorAll('button')).find(button => button.textContent === ${JSON.stringify(text)}).click()`);
+const fill = (placeholder, value) => evaluate(`{
+    const input = document.querySelector('input[placeholder='+${JSON.stringify(JSON.stringify(placeholder))}+']');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+}`);
 let passed = 0;
 function pass(name) { console.log(`PASS browser: ${name}`); passed++; }
 try {
@@ -172,9 +197,74 @@ try {
     await until(() => evaluate("location.pathname === '/login'"));
     assert.equal(await hasToken(), false);
     pass('expired session is rejected during initial verification');
+
+    expectedPassword = '  Длинный🔐'.repeat(180) + ' tail ';
+    await until(() => hasText('Войти'));
+    await fill('Логин', 'synthetic-test');
+    await fill('Пароль', expectedPassword);
+    holdLogin = true;
+    const previousLogins = records.filter((entry) => entry.path === '/api/auth/login').length;
+    await evaluate("{ const button = Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Войти'); button.click(); button.click(); }");
+    await until(async () => pendingLogins.length > 0);
+    assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Вход…').disabled"), true);
+    assert.equal(records.filter((entry) => entry.path === '/api/auth/login').length, previousLogins + 1);
+    holdLogin = false;
+    for (const event of pendingLogins) await respond(event, 429, { message: 'Слишком много попыток входа. Повторите позже.' });
+    pendingLogins = [];
+    await until(() => hasText('Слишком много попыток входа'));
+    await until(() => hasText('Войти'));
+    assert.equal(records.filter((entry) => entry.path === '/api/auth/login').at(-1).passwordChars, expectedPassword.length);
+    pass('long login password is intact, double submit is blocked and 429 is visible');
+
+    await evaluate("Array.from(document.querySelectorAll('p')).find(p => p.textContent === 'Восстановление пароля').click()");
+    await fill('Введите логин', 'synthetic-test');
+    await clickButton('Восстановить');
+    await until(() => hasText('Проверочный вопрос'));
+    await fill('Ответ', 'synthetic-answer');
+    await clickButton('Подтвердить');
+    await until(() => hasText('Сбросить пароль'));
+    assert.equal(await evaluate("document.querySelector('input[placeholder=\"Новый пароль\"]').maxLength"), -1);
+    await fill('Новый пароль', expectedPassword);
+    await fill('Подтверждение пароля', expectedPassword);
+    await clickButton('Сбросить пароль');
+    await until(() => hasText('Войти'));
+    assert.equal(records.filter((entry) => entry.path === '/api/auth/recPass/newPass').at(-1).passwordChars, expectedPassword.length);
+    pass('recovery transmits a full password longer than 1024 characters without a length rule');
+
+    mode = 'manager';
+    await cookie('token', 'synthetic-session');
+    await navigate('/users');
+    await until(() => evaluate("Boolean(document.querySelector('button.addUser'))"));
+    await evaluate("document.querySelector('button.addUser').click()");
+    await until(() => hasText('Добавить пользователя'));
+    await fill('Введите имя сотрудника', 'Synthetic');
+    await fill('Введите фамилию сотрудника', 'Test');
+    await fill('Введите телеграм id сотрудника', 'synthetic-new-user');
+    await fill('Введите пароль сотрудника', expectedPassword);
+    await fill('Frontend, Backend, Дизайнер, Тестировщик и т.п.', 'Test');
+    await evaluate("document.querySelector('[role=combobox]').click()");
+    await until(() => evaluate("document.querySelectorAll('[role=option]').length > 0"));
+    await evaluate("Array.from(document.querySelectorAll('[role=option]')).find(option => option.textContent.includes('Работник')).dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerType:'mouse'}))");
+    holdCreate = true;
+    await evaluate("{ const button = Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Добавить пользователя'); button.click(); button.click(); }");
+    await until(async () => pendingCreates.length > 0);
+    assert.equal(pendingCreates.length, 1);
+    assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Сохранение…').disabled"), true);
+    holdCreate = false;
+    for (const event of pendingCreates) await respond(event, 201, { message: 'Пользователь успешно зарегистрирован' });
+    pendingCreates = [];
+    await until(() => hasText('Добавить пользователя'));
+    assert.equal(records.filter((entry) => entry.path === '/api/auth/createUser').at(-1).passwordChars, expectedPassword.length);
+    pass('manager form keeps the long password and blocks concurrent creation requests');
     assert.deepEqual(interceptionErrors, []);
     assert.deepEqual(exceptions, []);
     console.log(`Browser scenarios passed: ${passed}; API responses are synthetic, no working backend contacted`);
 } finally {
-    socket.close();
+    if (process.argv.includes('--close-browser')) {
+        await new Promise((resolve) => {
+            const timeout = setTimeout(() => { socket.close(); resolve(); }, 3000);
+            socket.addEventListener('close', () => { clearTimeout(timeout); resolve(); }, { once: true });
+            socket.send(JSON.stringify({ id: ++nextId, method: 'Browser.close' }));
+        });
+    } else socket.close();
 }
