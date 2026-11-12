@@ -8,7 +8,7 @@ const UserModel = {
   },
 
   updateUserInfo: async (id, fname, lname, post) => {
-      const query = 'UPDATE users SET fname = $1, lname = $2, post = $3 WHERE id = $4 RETURNING *;';
+      const query = 'UPDATE users SET fname = $1, lname = $2, post = $3 WHERE id = $4 RETURNING id, fname, lname, tg_id, post, role;';
       const values = [fname, lname, post, id];
       const result = await postgree.query(query, values);
       return result.rows[0];

@@ -16,8 +16,11 @@ const UsersController = {
             const { id } = req.params;
             const { fname, lname, post } = req.body;
             const users = await UsersModel.updateUserInfo(id, fname, lname, post);
-
-            return res.status(201).json({ message: "Пользователь успешно изменён", user: users });
+            if (!users) return res.status(404).json({ message: "Пользователь не найден" });
+            const { id: userId, fname: firstName, lname: lastName, tg_id, post: position, role } = users;
+            return res.status(201).json({ message: "Пользователь успешно изменён", user: {
+                id: userId, fname: firstName, lname: lastName, tg_id, post: position, role
+            } });
         } catch (err){
             console.error(err);
             return res.status(500).json({ message: "Ошибка сервера" });

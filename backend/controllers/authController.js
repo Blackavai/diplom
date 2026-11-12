@@ -2,6 +2,21 @@ const AuthModel = require("../models/authModel");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const postgree = require("../db");
+const { recovery, isNonEmptyString } = require('../utils/passwordRecovery');
+
+function validateRecoveryRequest(req, res) {
+    res.set('Cache-Control', 'no-store');
+    if (!isNonEmptyString(req.body?.tg_id)) {
+        res.status(400).json({ message: 'Некорректные данные восстановления' });
+        return false;
+    }
+    if (!recovery.allowAttempt(req.body.tg_id, req.ip || req.socket?.remoteAddress || 'unknown')) {
+        res.set('Retry-After', '900');
+        res.status(429).json({ message: 'Слишком много попыток. Повторите позже.' });
+        return false;
+    }
+    return true;
+}
 
 const AuthController = {
     insertNewUser: async (req, res) => {
@@ -99,9 +114,11 @@ const AuthController = {
     },
 
     recPass: async (req, res) => {
+        if (!validateRecoveryRequest(req, res)) return;
         try {
             const { tg_id } = req.body;
             const recPass = await AuthModel.recPass(tg_id);
+            if (!recPass) return res.status(403).json({ message: 'Восстановление недоступно для указанных данных' });
             return res.status(200).json({
                 message: "Для восстановления пароля",
                 recoverPassword: {
@@ -109,40 +126,49 @@ const AuthController = {
                 }
             });
         } catch (err) {
-            return res.status(404).json({ message: err.message || "Ошибка сервера" }); // Возвращаем 404, если пользователь не найден
+            console.error('Ошибка получения вопроса восстановления');
+            return res.status(500).json({ message: 'Ошибка сервера' });
         }
     },
 
     recAns: async (req, res) => {
+        if (!validateRecoveryRequest(req, res)) return;
+        if (!isNonEmptyString(req.body.secAns)) return res.status(400).json({ message: 'Введите ответ на проверочный вопрос' });
         try {
             const { tg_id, secAns } = req.body;
             const recPass = await AuthModel.recAns(tg_id, secAns);
 
             if (recPass) {
+                const recoveryToken = recovery.issue(recPass.id, tg_id);
+                if (!recoveryToken) return res.status(503).json({ message: 'Восстановление временно недоступно' });
                 return res.status(200).json({
                     message: "Ответ верный. Переходите к восстановлению пароля.",
-                    recoverPassword: {
-                        questions: recPass.question,
-                        answers: recPass.answer
-                    }
+                    recoveryToken,
+                    expiresIn: 300
                 });
             } else {
                 return res.status(403).json({ message: "Неверный ответ на вопрос" });
             }
         } catch (err) {
-            return res.status(500).json({ message: err.message || "Ошибка сервера" });
+            console.error('Ошибка проверки ответа восстановления');
+            return res.status(500).json({ message: 'Ошибка сервера' });
         }
     },
 
     newPass: async (req, res) => {
+        if (!validateRecoveryRequest(req, res)) return;
+        const { tg_id, textNewPassword, recoveryToken } = req.body;
+        if (!isNonEmptyString(textNewPassword, 1024)) return res.status(400).json({ message: 'Введите пароль длиной до 1024 символов' });
+        const userId = recovery.consume(recoveryToken, tg_id);
+        if (userId === null) return res.status(403).json({ message: 'Подтвердите восстановление пароля заново' });
         try {
-            const { tg_id, textNewPassword } = req.body;
             // const hashedPassword = await bcrypt.hash(textNewPassword, 10);
-            const newPasswords = await AuthModel.newPassword(tg_id, textNewPassword);
+            const newPasswords = await AuthModel.newPassword(userId, tg_id, textNewPassword);
+            if (!newPasswords) return res.status(403).json({ message: 'Подтвердите восстановление пароля заново' });
             return res.status(200).json({ message: "Пароль успешно изменён", success: true });
         } catch (err) {
-            console.error(err);
-            return res.status(404).json({ message: err.message || "Ошибка сервера" }); // Возвращаем 404, если пользователь не найден
+            console.error('Ошибка смены пароля при восстановлении');
+            return res.status(500).json({ message: 'Ошибка сервера. Подтвердите восстановление заново.' });
         }
     }
 };

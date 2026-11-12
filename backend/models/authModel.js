@@ -1,4 +1,5 @@
 const postgree = require('../db');
+const { isNonEmptyString, answersMatch } = require('../utils/passwordRecovery');
 
 const AuthModel = {
     createUser: async (fname, lname, tg_id, post, role, pass) => {
@@ -18,39 +19,29 @@ const AuthModel = {
         return res.rows[0];
     },
     recPass: async (tg_id) => {
-        const query = await postgree.query("SELECT question FROM users WHERE tg_id = $1;", [tg_id]);
-        if (query.rows.length === 0) {
-            throw new Error("Пользователь не найден");
-        }
-        return query.rows[0];
+        const query = await postgree.query("SELECT id, question, answer FROM users WHERE tg_id = $1;", [tg_id]);
+        const user = query.rows[0];
+        // Ambiguous accounts and unset recovery credentials cannot authorize a reset.
+        if (query.rows.length !== 1 || !isNonEmptyString(user.question) || !isNonEmptyString(user.answer)) return null;
+        return { id: user.id, question: user.question };
     },
     recAns: async (tg_id, secAns) => {
-        const query = await postgree.query("SELECT answer, question FROM users WHERE tg_id = $1", [tg_id]);
-        if (query.rows.length > 0) {
-            const user = query.rows[0];
-            if (user.answer === secAns) {
-                return {
-                    question: user.question,
-                    answer: user.answer
-                };
-            }
-        }
+        const query = await postgree.query("SELECT id, answer, question FROM users WHERE tg_id = $1", [tg_id]);
+        const user = query.rows[0];
+        if (query.rows.length === 1 && isNonEmptyString(user.question) && answersMatch(user.answer, secAns)) return { id: user.id };
         return null;
     },
-    newPassword: async (tg_id, textNewPassword) => {
+    newPassword: async (id, tg_id, textNewPassword) => {
         const query = `
         UPDATE users 
         SET 
             password = $1
-        WHERE tg_id = $2 
-        RETURNING *;
+        WHERE id = $2 AND tg_id = $3
+        RETURNING id;
     `;
-        const values = [textNewPassword, tg_id];
+        const values = [textNewPassword, id, tg_id];
         const result = await postgree.query(query, values);
-        if (result.rows.length === 0) {
-            throw new Error("Пользователь не найден");
-        }
-        return result.rows[0];
+        return result.rows[0] || null;
     }
 };
 

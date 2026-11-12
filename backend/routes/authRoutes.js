@@ -57,25 +57,25 @@ const AuthController = require("../controllers/authController");
 /**
  * @openapi
  * /api/auth/recPass:
- *   get:
+ *   post:
  *     tags: [Authorization]
- *     summary: Восстановление пароля
- *     description: Получение вопросов и ответов для восстановления пароля
+ *     summary: Получить проверочный вопрос
+ *     description: Возвращает только вопрос. Для пустых или неоднозначных учётных записей восстановление недоступно.
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [tg_id]
  *             properties:
  *               tg_id:
  *                 type: string
- *                 example: "123456789"
- *             required:
- *               - tg_id
+ *                 minLength: 1
+ *                 maxLength: 255
  *     responses:
  *       200:
- *         description: Вопросы для восстановления пароля
+ *         description: Проверочный вопрос, без секретного ответа
  *         content:
  *           application/json:
  *             schema:
@@ -88,60 +88,106 @@ const AuthController = require("../controllers/authController");
  *                   properties:
  *                     questions:
  *                       type: string
- *                     answers:
- *                       type: string
- *       404:
- *         description: Пользователь не найден
+ *       400:
+ *         description: Некорректный запрос
+ *       403:
+ *         description: Восстановление недоступно
+ *       429:
+ *         description: Лимит всех запросов восстановления за 15 минут — 15 на аккаунт и 60 на IP
  *       500:
  *         description: Внутренняя ошибка сервера
- */
-
-/**
- * @openapi
- * /api/auth/recPass/newPass:
+ * /api/auth/recAns:
  *   post:
  *     tags: [Authorization]
- *     summary: Установка нового пароля
- *     description: Устанавливает новый пароль для пользователя
+ *     summary: Подтвердить ответ и получить одноразовое разрешение
+ *     description: Новое разрешение отменяет предыдущее для этого пользователя. Секретный ответ не возвращается.
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [tg_id, secAns]
  *             properties:
  *               tg_id:
  *                 type: string
- *                 example: "123456789"
+ *                 minLength: 1
+ *                 maxLength: 255
+ *               secAns:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 255
+ *     responses:
+ *       200:
+ *         description: Разрешение на смену пароля сроком 5 минут
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 recoveryToken:
+ *                   type: string
+ *                   pattern: '^[a-f0-9]{64}$'
+ *                 expiresIn:
+ *                   type: integer
+ *                   enum: [300]
+ *       400:
+ *         description: Некорректный запрос или пустой ответ
+ *       403:
+ *         description: Неверный ответ или восстановление недоступно
+ *       429:
+ *         description: Слишком много запросов восстановления
+ *       503:
+ *         description: Хранилище разрешений временно недоступно
+ *       500:
+ *         description: Внутренняя ошибка сервера
+ * /api/auth/recPass/newPass:
+ *   post:
+ *     tags: [Authorization]
+ *     summary: Установить новый пароль по одноразовому разрешению
+ *     description: Разрешение привязано к пользователю, действует 5 минут и расходуется до записи в БД. После ошибки записи требуется повторное подтверждение. Перезапуск backend отменяет разрешения. Ранее выданные JWT не отзываются.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [tg_id, textNewPassword, recoveryToken]
+ *             properties:
+ *               tg_id:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 255
  *               textNewPassword:
  *                 type: string
-*                 example: "newSecurePassword123"
-*             required:
-*               - tg_id
-*               - textNewPassword
-*     responses:
-*       200:
-*         description: Пароль успешно изменён
-*         content:
-*           application/json:
-*             schema:
-    *               type: object
-*               properties:
-*                 message:
-    *                   type: string
-*                 pass:
-*                   type: object
-*                   properties:
-*                     tg_id:
-    *                       type: string
-*                     password:
-*                       type: string
-*       404:
-*         description: Пользователь не найден
-*       500:
-*         description: Внутренняя ошибка сервера
-*/
-
+ *                 minLength: 1
+ *                 maxLength: 1024
+ *               recoveryToken:
+ *                 type: string
+ *                 pattern: '^[a-f0-9]{64}$'
+ *     responses:
+ *       200:
+ *         description: Пароль изменён; пароль и данные пользователя не возвращаются
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 success:
+ *                   type: boolean
+ *       400:
+ *         description: Некорректный запрос или пустой пароль
+ *       403:
+ *         description: Отсутствующее, чужое, использованное или просроченное разрешение
+ *       429:
+ *         description: Слишком много запросов восстановления
+ *       500:
+ *         description: Ошибка сервера; требуется повторное подтверждение восстановления
+ */
 
 router.post("/createUser", AuthController.insertNewUser);
 router.delete("/delUser/:id", AuthController.deleteUser);
