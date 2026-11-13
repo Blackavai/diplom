@@ -16,6 +16,28 @@ docker compose --env-file /dev/null -f docker-compose.recovery-test.yml -p itrum
 Axios adapter и cookie/toast заменены тестовыми объектами; запросов к API нет.
 Guard проверяется React SSR; переходы и эффекты дополнительно проверяются в браузере.
 
+## Vite dev/preview и границы доступа
+
+После сборки `frontend-checks` по инструкции выше:
+
+```sh
+docker run --rm --network none itrum-access-check-frontend-checks node --test tests/access.test.mjs tests/dev-server.test.mjs
+```
+
+Нужен Node 24 LTS; новые библиотеки не используются. Совместный запуск содержит
+16 успешных проверок в пятом этапе (9 прежних, 6 новых подсценариев и общий сценарий).
+`dev-server.test.mjs` поднимает настоящий Vite dev/preview с текущей конфигурацией,
+временной синтетической SPA и искусственным API только на loopback. Проверяет:
+bind `127.0.0.1`, возможность явного container host, отклонение постороннего Host,
+SPA deep links, proxy `/api/` и `/api-docs/`, Bearer/cookie и статусы
+200/401/403/404/429 с Retry-After, HMR WebSocket и обновление модуля.
+
+Тесты доступа к файлам используют только созданные ими текст/HTML вне корня
+временной SPA. Проверяется блокировка прямого доступа, HTML traversal и безвредной
+попытки добавить искусственный файл через virtual module из advisory Vite.
+Команды и payload выполнения кода не применяются. Временные файлы удаляются
+после теста. Существующий backend/БД, рабочий `.env` и Docker volumes не используются.
+
 ## Собранный интерфейс в headless Chrome
 
 Нужны локальные Chrome и Node >=22 (в проверке использовался Node 24). Используйте

@@ -1,6 +1,6 @@
 # Контекст проекта
 
-Обновлено: 13 ноября 2026 года. Основание — статический аудит и четыре согласованных этапа: восстановление/DTO; права API/атомарность отчёта; код scrypt/защита входа; команды и два локальных способа запуска. Изменения проверены на синтетических БД в отдельных Docker-проектах; frontend — модульно и в headless Chrome с искусственным и настоящим тестовым API. Текущая БД не проверялась и не преобразовывалась; полная работоспособность приложения не подтверждена. Подробности: [AUDIT.md](AUDIT.md), план: [ROADMAP.md](ROADMAP.md).
+Обновлено: 13 ноября 2026 года. Основание — контрольный аудит и пять согласованных этапов: восстановление/DTO; права API/атомарность отчёта; код scrypt/защита входа; команды и два локальных способа запуска; затем Vite 6.4.6, локальный bind dev/preview и закреплённый Node 24 LTS. Изменения проверены на синтетических БД в отдельных Docker-проектах; frontend — модульно и в headless Chrome с искусственным и настоящим тестовым API. Рабочие сервисы в пятом этапе не пересобирались/не перезапускались. Текущая БД не проверялась и не преобразовывалась; полная работоспособность приложения не подтверждена. Подробности: [AUDIT.md](AUDIT.md), план: [ROADMAP.md](ROADMAP.md).
 
 ## Назначение и состояние
 
@@ -14,7 +14,7 @@ DailySync — веб-панель управления сотрудниками,
 
 | Слой | Реализация |
 | --- | --- |
-| Frontend | React / React DOM 19.1.0, TypeScript 5.8.3, Vite 6.3.5 |
+| Frontend | React / React DOM 19.1.0, TypeScript 5.8.3, Vite 6.4.6 (точно закреплён) |
 | UI | Tailwind CSS 4.1.7 с Vite-плагином, обычные CSS, Radix UI, компоненты в стиле shadcn/ui, lucide-react |
 | Навигация и HTTP | react-router-dom 7.6.0, Axios 1.10.0 |
 | Состояние | useState/useEffect, AuthContext, NotificationContext, sonner 2.0.7, js-cookie 3.0.5 |
@@ -22,7 +22,7 @@ DailySync — веб-панель управления сотрудниками,
 | Авторизация | jsonwebtoken 9.0.2; встроенный crypto.scrypt для паролей; bcrypt 5.1.1 остаётся в зависимостях, но не используется |
 | API docs | swagger-jsdoc 6.2.8, swagger-ui-express 5.0.1, /api-docs |
 | БД | Образ postgres:17-alpine; дамп PostgreSQL/pg_dump 17.4 |
-| Контейнеры | Docker Compose, node:20-alpine, nginx:stable-alpine |
+| Контейнеры | Docker Compose, node:24-alpine с digest в обоих Dockerfile (проверен Node 24.22.3, linux/arm64), nginx:stable-alpine |
 
 Lock-файлы формата v3; декларации прямых зависимостей согласованы с package.json. Это не означает отсутствия уязвимостей.
 
@@ -85,7 +85,7 @@ docs/                    контекст, аудит, дорожная карт
 
 Проверка сессии, вход, создание пользователя и восстановление имеют timeout 15 секунд. Формы входа/создания/reset блокируют повторную отправку и показывают ошибки сервера. Восстановление хранит recoveryToken только в состоянии компонента; при ошибке смены пароля форма возвращается к началу восстановления. Новых требований длины нет; прежний локальный лимит reset 1024 символа снят. Систематические состояния загрузки остальных списков не добавлялись. Только login явно передаёт withCredentials: true. При фокусе окна сессия перепроверяется; backend проверяет актуальную роль при каждом запросе.
 
-Vite: alias @ → src, dev-порт 5173, bind 0.0.0.0 сохранён. Proxy /api и /api-docs в dev/preview берёт API_PROXY_TARGET из окружения/frontend .env; default http://127.0.0.1:5000 совпадает с default PORT backend. В Docker frontend раздаёт Nginx, а не Vite. Инструкция обоих способов запуска: [frontend/README.md](../frontend/README.md).
+Vite: alias @ → src, dev-порт 5173, dev/preview слушают 127.0.0.1. Контейнерные тесты явно задают --host 0.0.0.0 и публикуют только loopback-порты. Proxy /api и /api-docs в dev/preview берёт API_PROXY_TARGET из окружения/frontend .env; default http://127.0.0.1:5000 совпадает с default PORT backend. В Docker frontend раздаёт Nginx, а не Vite. Инструкция обоих способов запуска: [frontend/README.md](../frontend/README.md).
 
 ## Backend и фактический API
 
@@ -181,9 +181,11 @@ Nginx делает SPA fallback на index.html и передаёт /api, /api-d
 
 ## Проверки и команды
 
-Backend: npm start запускает приложение; npm test — Node test runner с последовательным запуском файлов для ограничения нагрузки KDF. Без RECOVERY_TEST_DATABASE=1 пять интеграционных сценариев пропускаются; полный запуск выполняется через отдельный тестовый Compose с проверкой имени/хоста тестовой БД. Миграция проверяется на дополнительной синтетической БД внутри тестового PostgreSQL. Frontend: npm run dev, npm run build (только vite build), npm run lint, npm run preview; тесты запускаются явно через Node. Typecheck в build не включён. Инструкции: [backend/tests/README.md](../backend/tests/README.md), [frontend/tests/README.md](../frontend/tests/README.md).
+Backend: npm start запускает приложение; npm test — Node test runner с последовательным запуском файлов для ограничения нагрузки KDF. Без RECOVERY_TEST_DATABASE=1 пять интеграционных сценариев пропускаются; полный запуск выполняется через отдельный тестовый Compose с проверкой имени/хоста тестовой БД. Миграция проверяется на дополнительной синтетической БД внутри тестового PostgreSQL. Frontend: npm run dev, npm run build (только vite build), npm run lint, npm run preview; тесты запускаются явно через Node. Новый tests/dev-server.test.mjs проверяет настоящий Vite dev/preview, loopback/Host, proxy, HMR и границы искусственных файлов без внешней сети/БД. Typecheck в build не включён. Инструкции: [backend/tests/README.md](../backend/tests/README.md), [frontend/tests/README.md](../frontend/tests/README.md).
 
 Третий этап: syntax 29 JS-файлов успешен; backend npm test в Docker — 66 passed, 0 failed, 0 skipped (16 модульных тестов, 46 интеграционных подсценариев и 4 общих сценария). Успешны 9 frontend-тестов, 12 сценариев headless Chrome, build frontend, lint LoginPage, typecheck Vite и OpenAPI. Общий lint — 15 ошибок/4 предупреждения, TypeScript — 173 ошибки; до этапа было 16/4 и 174, новых диагностик TypeScript нет. Замер scrypt в Docker Node 20.20.2: hash 145 мс, verify 138 мс, 6 одновременных hash 441 мс, пик RSS процесса около 108 МиБ. Это не production-бенчмарк. В Chrome API искусственный, PostgreSQL тестовая в tmpfs без текущего .env, дампа и volumes. Зависимости, lock-файлы и production-конфигурация не менялись. Результаты всех этапов и ограничения — в AUDIT.md.
 
 
 Четвёртый этап: syntax 31 backend JS, 78 backend-тестов (16 unit, 57 интеграционных подсценариев и 5 общих сценариев), 9 frontend-тестов и 17 mock-браузерных сценариев успешны. Build, nginx -t, lint изменённых TS-файлов, typecheck Vite и OpenAPI parse успешны. Общие lint/typecheck остаются неуспешными: 8 ошибок/4 предупреждения и 123 ошибки TypeScript (до этапа 15/4 и 173), новых нормализованных диагностик нет. Проверены реальные Nginx/Vite → Express → синтетическая PostgreSQL, включая ошибки API, и настоящий браузер через Docker frontend и два npm-процесса на компьютере. Host-режим — Node 24.20.0 во временной копии с npm ci и нестандартными портами; PostgreSQL 17 в Docker. Рабочие сервисы не пересобирались/не перезапускались, изменения конфигурации только подготовлены. Подробности/ограничения — AUDIT.md; следующий этап автоматически не начинается.
+
+Пятый этап: чистые Docker-сборки по lock на закреплённом Node 24.22.3 успешны, нативный bcrypt загружается. Полный backend — 78 passed без пропусков; frontend — 9 прежних тестов и 6 новых подсценариев Vite с общим сценарием (16 passed при совместном запуске). Новые проверки включают HMR, proxy/статусы/заголовки и блокировку искусственных файлов вне корня, в том числе после безвредной virtual-module injection. Прошли 17 mock-браузерных сценариев, настоящий UI login/команды через тестовые Nginx и Vite, proxy smoke и nginx -t. При отказе тестового backend API возвращает 502 у Nginx/500 у Vite, SPA — 200. Typecheck Vite успешен; общий lint остался 8 ошибок/4 предупреждения, TypeScript приложения — 123 ошибки, новых нормализованных диагностик нет. Выборочный npm audit lock-файлов сообщает 21 замечание frontend и 12 backend; Vite в отчёте отсутствует, достижимость остальных advisories требует отдельного анализа. A03 для рабочих паролей, A05/A06, A24 (порты/Express), A29, A37–A39 и прочие незакрытые части остаются открытыми. Данные, схема, .env и volumes рабочей БД не менялись; текущий node_modules не переустанавливался.
