@@ -7,6 +7,11 @@ const baseURL = '/api';
 const api = axios.create({ baseURL });
 export const publicApi = axios.create({ baseURL });
 const unauthorizedHandlers = new Set<() => void>();
+let verifiedSessionToken: string | null = null;
+
+export const setVerifiedSessionToken = (token: string | null) => {
+    verifiedSessionToken = token;
+};
 
 export const onUnauthorized = (handler: () => void) => {
     unauthorizedHandlers.add(handler);
@@ -15,7 +20,20 @@ export const onUnauthorized = (handler: () => void) => {
 
 api.interceptors.request.use((config) => {
     const token = Cookies.get('token');
+    if (!token) {
+        for (const handler of unauthorizedHandlers) handler();
+    }
     if (token && !config.headers.has('Authorization')) config.headers.set('Authorization', `Bearer ${token}`);
+    const method = config.method?.toUpperCase() || 'GET';
+    // Существующий маршрут удаления через GET тоже изменяет данные.
+    const isUserDeletion = method === 'GET' && config.url?.startsWith('/users/delete/');
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method) || isUserDeletion) {
+        // Диалоги используют portal, поэтому блокируем отправку в общем клиенте.
+        if (!verifiedSessionToken || token !== verifiedSessionToken ||
+            config.headers.get('Authorization') !== `Bearer ${verifiedSessionToken}`) {
+            throw new Error('Дождитесь успешной проверки сессии и повторите действие');
+        }
+    }
     return config;
 });
 

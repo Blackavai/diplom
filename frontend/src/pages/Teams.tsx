@@ -20,6 +20,7 @@ import {CheckIcon} from "lucide-react";
 import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from "@/components/ui/command.tsx";
 import { useNotification } from './Notification.tsx';
 import imgTeamNone from '@/assets/team_none.png';
+import { useAuth } from './AuthContext.tsx';
 
 type TeamUser = { id: number; fname: string; lname: string; post?: string };
 type Team = { id: number; name_team: string; description_team: string | null };
@@ -108,6 +109,7 @@ type TeamMenuProps = {
 };
 
 export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams }: TeamMenuProps) {
+    const { sessionError, retrySession } = useAuth();
     const [dataTeam, setDataTeam] = useState<TeamUser[]>([]);
     const [open, setOpen] = useState(false);
     const [teamName, setTeamName] = useState(team.name_team);
@@ -120,24 +122,40 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
     const [revision, setRevision] = useState(0);
     const { addNotification } = useNotification();
 
+    const handleOpenChange = (nextOpen: boolean) => {
+        if (busy.current) return;
+        if (nextOpen) {
+            setTeamName(team.name_team);
+            setTeamDescription(team.description_team ?? "");
+            setSelectNewUser([]);
+            setDataTeam([]);
+            setLoading(true);
+            setMembersError(false);
+        }
+        setOpen(nextOpen);
+    };
+
     useEffect(() => {
         if (!open) return;
         let active = true;
-        setTeamName(team.name_team);
-        setTeamDescription(team.description_team ?? "");
-        setSelectNewUser([]);
-        setDataTeam([]);
         setLoading(true);
         setMembersError(false);
-        api.get(`/teams/view/${team.id}`, { timeout: 15000 })
-            .then((response) => { if (active) setDataTeam(response.data.view); })
-            .catch((error: unknown) => {
+        async function loadMembers() {
+            try {
+                const { data } = await api.get<{ view: TeamUser[] }>(`/teams/view/${team.id}`, { timeout: 15000 });
+                if (!active) return;
+                setDataTeam(data.view);
+                setSelectNewUser((selected) => selected.filter((user) => !data.view.some((member) => member.id === user.id)));
+            } catch (error: unknown) {
                 if (active) setMembersError(true);
                 console.error(apiErrorMessage(error));
-            })
-            .finally(() => { if (active) setLoading(false); });
+            } finally {
+                if (active) setLoading(false);
+            }
+        }
+        loadMembers();
         return () => { active = false; };
-    }, [open, team.id, team.name_team, team.description_team, revision]);
+    }, [open, team.id, revision]);
 
     const deleteUserTeam = async (id_user: number) => {
         if (busy.current) return;
@@ -189,7 +207,7 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
     };
 
     return (
-        <Dialog open={open} onOpenChange={(value) => { if (!busy.current) setOpen(value); }}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
                 <img src={arrow} alt={"arrow right "} width={"60px"} className={"box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) arrowAnim adaptArrow"} />
             </DialogTrigger>
@@ -202,6 +220,7 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
                         <input
                             id="name"
                             value={teamName}
+                            disabled={saving}
                             onChange={(e) => setTeamName(e.target.value)}
                             className="col-span-3 outlineFocus w-full"
                         />
@@ -213,6 +232,7 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
                                 id="username"
                                 className="col-span-3 outlineFocus w-full"
                                 value={teamDescription}
+                                disabled={saving}
                                 onChange={(e) => setTeamDescription(e.target.value)}
                             />
                         </Label>
@@ -248,6 +268,7 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
                     </div>
                 </div>
                 <DialogFooter>
+                    {sessionError && <Button type="button" onClick={retrySession}>Повторить проверку сессии</Button>}
                     <Button type="submit" variant={"yellow"} className={'btnInteractive'} disabled={saving || loading || membersError} onClick={saveTeamData}>{saving ? "Сохранение…" : "Сохранить"}</Button>
                     <Button type="submit" variant={"red"} className={'btnInteractive'} disabled={saving} onClick={removeTeam}>Удалить команду</Button>
                 </DialogFooter>
@@ -258,6 +279,7 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
 
 
 export function DialogAddTeam({ refreshTeams }: { refreshTeams: () => void }) {
+    const { sessionError, retrySession } = useAuth();
     const [newUserTeam, setNewUserTeam] = useState<TeamUser[]>([]);
     const [teamName, setTeamName] = useState('');
     const [teamDescription, setTeamDescription] = useState('');
@@ -310,6 +332,7 @@ export function DialogAddTeam({ refreshTeams }: { refreshTeams: () => void }) {
                         <input
                             id="name"
                             placeholder="Название"
+                            disabled={saving}
                             className="col-span-3 outlineFocus"
                             value={teamName}
                             onChange={(e) => setTeamName(e.target.value)}
@@ -320,6 +343,7 @@ export function DialogAddTeam({ refreshTeams }: { refreshTeams: () => void }) {
                             Описание:
                             <input
                                 placeholder="Введите описание"
+                                disabled={saving}
                                 className="col-span-3 outlineFocus"
                                 value={teamDescription}
                                 onChange={(e) => setTeamDescription(e.target.value)}
@@ -348,6 +372,7 @@ export function DialogAddTeam({ refreshTeams }: { refreshTeams: () => void }) {
                     </div>
                 </div>
                 <DialogFooter>
+                    {sessionError && <Button type="button" onClick={retrySession}>Повторить проверку сессии</Button>}
                     <Button type="button" variant={"yellow"} onClick={addTeamData} disabled={saving} className={'btnInteractive'}>{saving ? "Сохранение…" : "Сохранить"}</Button>
                 </DialogFooter>
             </DialogContent>

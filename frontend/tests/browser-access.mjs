@@ -35,6 +35,7 @@ let teamsEnabled = false;
 let holdTeam = false;
 let failTeam = false;
 let failMembers = false;
+let showTask = false;
 const pendingTeams = [];
 let syntheticTeams = [];
 const teamMembers = new Map();
@@ -100,7 +101,10 @@ async function intercept(event) {
         }
     }
     if (path === '/api/users') return respond(event, 200, []);
-    if (path.endsWith('/tasks')) return respond(event, 201, { user: [] });
+    if (path.endsWith('/tasks')) {
+        const tasks = showTask ? [{ id: 77, content: 'Synthetic draft task', end_date: '2099-01-01' }] : [];
+        return respond(event, 201, { user: tasks });
+    }
     return respond(event, 404, { message: 'Synthetic test route not found' });
 }
 socket.addEventListener('message', ({ data }) => {
@@ -308,6 +312,8 @@ try {
     assert.equal(records.filter((record) => record.path === '/api/teams/create').length, beforeCreation + 1);
     assert.deepEqual(records.filter((record) => record.path === '/api/teams/create').at(-1).usersId, [3]);
     assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Сохранение…').disabled"), true);
+    assert.equal(await evaluate("document.querySelector('input[placeholder=Название]').disabled"), true);
+    assert.equal(await evaluate("document.querySelector('input[placeholder=\"Введите описание\"]').disabled"), true);
     holdTeam = false;
     pendingTeams.splice(0).forEach((release) => release());
     await until(() => evaluate("!document.querySelector('[role=dialog]') && document.body.innerText.includes('Browser team')"));
@@ -376,6 +382,211 @@ try {
     failTeam = false;
     await closeDialog();
     pass('successful creation clears the form; failed creation keeps the draft and shows an error');
+
+    const fillSelector = (selector, value) => evaluate(`{
+        const input = document.querySelector(${JSON.stringify(selector)});
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)});
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }`);
+    const beginSessionCheck = async () => {
+        holdSession = true;
+        await evaluate("window.dispatchEvent(new Event('focus'))");
+        await until(async () => pendingSessions.length > 0);
+    };
+    const finishSessionCheck = async (status, data) => {
+        holdSession = false;
+        const events = pendingSessions.splice(0);
+        for (const event of events) await respond(event, status, data);
+    };
+
+    if (!process.argv.includes('--only-team-regression')) {
+        await evaluate("document.querySelector('button.addTeam').click()");
+        await until(() => hasText('Создание команды'));
+        await fill('Название', 'Unsaved focus draft');
+        await beginSessionCheck();
+        assert.equal(await evaluate("document.querySelector('input[placeholder=Название]')?.value"), 'Unsaved focus draft', 'Фоновая проверка не должна размонтировать форму');
+        const writesBeforeCheck = records.filter((record) => record.path === '/api/teams/create').length;
+        await clickButton('Сохранить');
+        await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
+        assert.equal(records.filter((record) => record.path === '/api/teams/create').length, writesBeforeCheck);
+        await finishSessionCheck(200, { user: actor() });
+        await until(async () => !(await hasText('Проверка сессии')));
+        assert.equal(await evaluate("document.querySelector('input[placeholder=Название]')?.value"), 'Unsaved focus draft');
+        await closeDialog();
+        pass('focus verification preserves an unsaved dialog and blocks writes until success');
+
+        await evaluate("document.querySelector('button.addTeam').click()");
+        await until(() => hasText('Создание команды'));
+        await fill('Название', 'Temporary failure draft');
+        await beginSessionCheck();
+        await finishSessionCheck(500, { message: 'Synthetic temporary failure' });
+        await until(() => hasText('Не удалось проверить сессию'));
+        assert.equal(await evaluate("document.querySelector('input[placeholder=Название]')?.value"), 'Temporary failure draft');
+        const writesBeforeFailure = records.filter((record) => record.path === '/api/teams/create').length;
+        await clickButton('Сохранить');
+        await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
+        assert.equal(records.filter((record) => record.path === '/api/teams/create').length, writesBeforeFailure);
+        holdSession = true;
+        const retryPoint = await evaluate(`{
+            const button = Array.from(document.querySelectorAll('[role=dialog] button')).find(button => button.textContent === 'Повторить проверку сессии');
+            const rect = button.getBoundingClientRect();
+            ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+        }`);
+        await call('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...retryPoint });
+        await call('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...retryPoint });
+        await until(async () => pendingSessions.length > 0);
+        await finishSessionCheck(200, { user: actor() });
+        await until(async () => !(await hasText('Проверка сессии')) && !(await hasText('Не удалось проверить сессию')));
+        assert.equal(await evaluate("document.querySelector('input[placeholder=Название]')?.value"), 'Temporary failure draft');
+        await closeDialog();
+        pass('temporary background failure preserves the draft, blocks writes and supports retry');
+
+        await evaluate("document.querySelector('button.addTeam').click()");
+        await until(() => hasText('Создание команды'));
+        await fill('Название', 'Expired cookie draft');
+        const beforeExpiry = records.filter((record) => record.path === '/api/teams/create').length;
+        await call('Network.deleteCookies', { name: 'token', url: origin });
+        await clickButton('Сохранить');
+        await until(() => evaluate("location.pathname==='/login'"));
+        assert.equal(records.filter((record) => record.path === '/api/teams/create').length, beforeExpiry);
+        await cookie('token', 'synthetic-session');
+        pass('cookie expiry during editing closes the session without sending the form');
+
+        const drafts = [
+            { mode: 'manager', path: '/users', trigger: 'button.addUser', placeholder: 'Введите имя сотрудника' },
+            { mode: 'worker', path: '/tasks', trigger: '.rowUserTask img.arrowAnim', placeholder: 'Отчёт о выполнении задачи' },
+            { mode: 'manager', path: '/tasks_list', trigger: '.rowUserTask img.arrowAnim', placeholder: 'Напишите задачу' },
+            { mode: 'manager', path: '/vacation_list', trigger: 'button.addVacationButt', placeholder: 'Начните вводить ФИО' },
+        ];
+        showTask = true;
+        for (const draft of drafts) {
+            mode = draft.mode;
+            await navigate(draft.path);
+            await until(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(draft.trigger)}))`));
+            await evaluate(`document.querySelector(${JSON.stringify(draft.trigger)}).click()`);
+            await until(() => evaluate(`Boolean(document.querySelector('input[placeholder='+${JSON.stringify(JSON.stringify(draft.placeholder))}+']'))`));
+            await fill(draft.placeholder, 'Synthetic preserved draft');
+            await beginSessionCheck();
+            const selector = `input[placeholder=${JSON.stringify(draft.placeholder)}]`;
+            assert.equal(await evaluate(`document.querySelector(${JSON.stringify(selector)})?.value`), 'Synthetic preserved draft');
+            await finishSessionCheck(200, { user: actor() });
+            await until(async () => !(await hasText('Проверка сессии')));
+            assert.equal(await evaluate(`document.querySelector(${JSON.stringify(selector)})?.value`), 'Synthetic preserved draft');
+            await closeDialog();
+            pass(`focus preserves draft on ${draft.path}`);
+        }
+        showTask = false;
+
+        mode = 'manager';
+        await navigate('/teams');
+        await until(() => evaluate("Boolean(document.querySelector('button.addTeam'))"));
+        await beginSessionCheck();
+        await finishSessionCheck(200, { user: { ...actor(), role: 2 } });
+        await until(() => hasText('Недостаточно прав для этой страницы'));
+        assert.equal(await evaluate("Boolean(document.querySelector('button.addTeam'))"), false);
+        pass('background role downgrade closes the management page');
+
+        for (const status of [401, 403]) {
+            await cookie('token', 'synthetic-session');
+            await navigate('/teams');
+            await until(() => evaluate("Boolean(document.querySelector('button.addTeam'))"));
+            await beginSessionCheck();
+            await finishSessionCheck(status, { message: 'Synthetic denied session' });
+            if (status === 401) {
+                await until(() => evaluate("location.pathname==='/login'"));
+                assert.equal(await hasToken(), false);
+            } else {
+                await until(() => hasText('Доступ запрещён'));
+            }
+            assert.equal(await evaluate("Boolean(document.querySelector('button.addTeam'))"), false);
+            pass(`background ${status} closes protected data`);
+        }
+
+        for (const oldStatus of [200, 401]) {
+            mode = 'manager';
+            await cookie('token', 'synthetic-old');
+            await navigate('/teams');
+            await until(() => evaluate("Boolean(document.querySelector('button.addTeam'))"));
+            await evaluate("document.querySelector('button.addTeam').click()");
+            await until(() => hasText('Создание команды'));
+            await fill('Название', 'Old identity draft');
+            await beginSessionCheck();
+            const oldEvents = pendingSessions.splice(0);
+            await cookie('token', 'synthetic-new');
+            mode = 'worker';
+            await evaluate("window.dispatchEvent(new Event('focus'))");
+            await until(async () => pendingSessions.length > 0);
+            assert.equal(await evaluate("Boolean(document.querySelector('[role=dialog]'))"), false);
+            await finishSessionCheck(200, { user: actor() });
+            await until(() => hasText('Недостаточно прав для этой страницы'));
+            for (const event of oldEvents) await respond(event, oldStatus, { user: { ...actor(), id: 1, role: 1 } });
+            await evaluate('new Promise(resolve => setTimeout(resolve, 100))');
+            assert.equal(await hasToken(), true);
+            assert.equal(await hasText('Недостаточно прав для этой страницы'), true);
+            assert.equal(await evaluate("Boolean(document.querySelector('[role=dialog]'))"), false);
+            pass(`new identity discards old drafts and ignores late old ${oldStatus}`);
+        }
+
+        mode = 'manager';
+        await cookie('token', 'synthetic-session');
+        await navigate('/teams');
+        await until(() => evaluate("Boolean(document.querySelector('button.addTeam'))"));
+        await beginSessionCheck();
+        await evaluate("document.querySelector('.item_auth img[alt=Выход]').click()");
+        await until(() => evaluate("location.pathname==='/login'"));
+        await finishSessionCheck(200, { user: actor() });
+        await evaluate('new Promise(resolve => setTimeout(resolve, 100))');
+        assert.equal(await hasToken(), false);
+        assert.equal(await evaluate('location.pathname'), '/login');
+        pass('late background success cannot restore a logged-out session');
+        await cookie('token', 'synthetic-session');
+        await navigate('/teams');
+        await until(() => evaluate("Boolean(document.querySelector('button.addTeam'))"));
+    }
+
+    if (!process.argv.includes('--only-session-regression')) {
+        failMembers = true;
+        await evaluate("document.querySelector('img.adaptArrow').click()");
+        await until(() => hasText('Не удалось загрузить состав команды'));
+        await fillSelector('[role=dialog] input#name', 'Unsaved retry name');
+        await fillSelector('[role=dialog] input#username', 'Unsaved retry description');
+        failMembers = false;
+        await clickButton('Повторить');
+        await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
+        assert.equal(await evaluate("document.querySelector('[role=dialog] input#name').value"), 'Unsaved retry name', 'Повтор загрузки состава не должен сбрасывать название');
+        assert.equal(await evaluate("document.querySelector('[role=dialog] input#username').value"), 'Unsaved retry description');
+        await chooseMember('Member Two');
+        await beginSessionCheck();
+        assert.equal(await evaluate("document.querySelector('[role=dialog] input#name')?.value"), 'Unsaved retry name');
+        await finishSessionCheck(200, { user: actor() });
+        await until(async () => !(await hasText('Проверка сессии')));
+        assert.equal(await evaluate("document.querySelectorAll('[role=dialog] ol li').length"), 2);
+        pass('team edit fields and selected members survive focus verification');
+
+        holdTeam = true;
+        failTeam = true;
+        await clickButton('Сохранить');
+        await until(async () => pendingTeams.length === 1);
+        assert.equal(await evaluate("document.querySelector('[role=dialog] input#name').disabled"), true);
+        assert.equal(await evaluate("document.querySelector('[role=dialog] input#username').disabled"), true);
+        holdTeam = false;
+        pendingTeams.splice(0).forEach((release) => release());
+        await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
+        assert.equal(await evaluate("document.querySelector('[role=dialog] input#name').value"), 'Unsaved retry name');
+        assert.equal(await evaluate("document.querySelectorAll('[role=dialog] ol li').length"), 2);
+        failTeam = false;
+        await clickButton('Сохранить');
+        await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
+        assert.equal(await evaluate("document.querySelectorAll('[role=dialog] ol li').length"), 2);
+        assert.equal(await evaluate("document.querySelector('[role=dialog] input#name').value"), 'Unsaved retry name');
+        await closeDialog();
+        pass('membership retry preserves unsaved team fields');
+        await openTeam();
+        assert.equal(await evaluate("document.querySelector('[role=dialog] input#name').value"), 'Unsaved retry name');
+        assert.equal(await evaluate("document.querySelectorAll('[role=dialog] ol li').length"), 2);
+        await closeDialog();
+        pass('failed edit preserves selection; successful retry clears it and reopening loads saved data');
+    }
     assert.deepEqual(interceptionErrors, []);
     assert.deepEqual(exceptions, []);
     console.log(`Browser scenarios passed: ${passed}; API responses are synthetic, no working backend contacted`);

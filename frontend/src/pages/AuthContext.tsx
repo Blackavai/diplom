@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import type { ReactNode } from 'react';
 import Cookies from 'js-cookie';
 import axios from 'axios';
-import api, { onUnauthorized } from '@/lib/api';
+import api, { onUnauthorized, setVerifiedSessionToken } from '@/lib/api';
 
 interface AuthUser {
     id: number;
@@ -20,6 +20,8 @@ interface AuthContextType {
     token: string | null;
     setToken: (token: string | null) => void;
     status: SessionStatus;
+    isCheckingSession: boolean;
+    sessionError: string | null;
     logout: () => void;
     retrySession: () => void;
 }
@@ -27,14 +29,17 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-    // userData is a cache only; identity and role always come from /protected.
+    // userData — только кеш; пользователя и роль подтверждает сервер.
     const [user, setUser] = useState<AuthUser | null>(null);
     const [token, setToken] = useState<string | null>(Cookies.get('token') || null);
     const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
     const [status, setStatus] = useState<SessionStatus>(token ? 'checking' : 'anonymous');
     const [checkVersion, setCheckVersion] = useState(0);
+    const [isCheckingSession, setIsCheckingSession] = useState(Boolean(token));
+    const [sessionError, setSessionError] = useState<string | null>(null);
 
     const updateToken = useCallback((nextToken: string | null) => {
+        setVerifiedSessionToken(null);
         if (nextToken) Cookies.set('token', nextToken, { expires: 1 / 24 });
         else Cookies.remove('token');
         Cookies.remove('userData');
@@ -43,11 +48,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
         setVerifiedToken(null);
         setStatus(nextToken ? 'checking' : 'anonymous');
+        setIsCheckingSession(Boolean(nextToken));
+        setSessionError(null);
         setCheckVersion((value) => value + 1);
     }, []);
     const logout = useCallback(() => updateToken(null), [updateToken]);
     const retrySession = useCallback(() => {
-        setStatus('checking');
+        setVerifiedSessionToken(null);
+        setIsCheckingSession(true);
+        setSessionError(null);
+        // Фоновая проверка прежней сессии сохраняет страницу и её формы.
+        setStatus((currentStatus) => {
+            if (currentStatus === 'authenticated') return currentStatus;
+            return 'checking';
+        });
         setCheckVersion((value) => value + 1);
     }, []);
 
@@ -56,26 +70,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     useEffect(() => {
         if (!token) return;
         let cancelled = false;
-        api.get<{ user: AuthUser }>('/auth/protected', {
-            headers: { Authorization: `Bearer ${token}` }, timeout: 15000
-        }).then(({ data }) => {
-            if (cancelled) return;
-            const cookieToken = Cookies.get('token') || null;
-            if (cookieToken !== token) { updateToken(cookieToken); return; }
-            if (!data.user || !Number.isInteger(data.user.id) || ![1, 2].includes(data.user.role)) {
-                throw new Error('Некорректный ответ проверки сессии');
+        setVerifiedSessionToken(null);
+        async function checkSession() {
+            try {
+                const { data } = await api.get<{ user: AuthUser }>('/auth/protected', {
+                    headers: { Authorization: `Bearer ${token}` }, timeout: 15000
+                });
+                if (cancelled) return;
+                const cookieToken = Cookies.get('token') || null;
+                if (cookieToken !== token) { updateToken(cookieToken); return; }
+                if (!data.user || !Number.isInteger(data.user.id) || ![1, 2].includes(data.user.role)) {
+                    throw new Error('Некорректный ответ проверки сессии');
+                }
+                setUser(data.user);
+                setVerifiedToken(token);
+                setStatus('authenticated');
+                setIsCheckingSession(false);
+                setSessionError(null);
+                setVerifiedSessionToken(token);
+                Cookies.set('userData', JSON.stringify(data.user), { expires: 1 / 24 });
+            } catch (error: unknown) {
+                if (cancelled) return;
+                const cookieToken = Cookies.get('token') || null;
+                if (cookieToken !== token) { updateToken(cookieToken); return; }
+                setIsCheckingSession(false);
+                if (axios.isAxiosError(error) && error.response?.status === 401) { logout(); return; }
+                if (axios.isAxiosError(error) && error.response?.status === 403) {
+                    setUser(null);
+                    setVerifiedToken(null);
+                    setStatus('forbidden');
+                    return;
+                }
+                setSessionError('Не удалось проверить сессию. Проверьте соединение.');
+                setStatus((currentStatus) => {
+                    if (currentStatus === 'authenticated') return currentStatus;
+                    return 'error';
+                });
             }
-            setUser(data.user);
-            setVerifiedToken(token);
-            setStatus('authenticated');
-            Cookies.set('userData', JSON.stringify(data.user), { expires: 1 / 24 });
-        }).catch((error: unknown) => {
-            if (cancelled) return;
-            const cookieToken = Cookies.get('token') || null;
-            if (cookieToken !== token) { updateToken(cookieToken); return; }
-            if (axios.isAxiosError(error) && error.response?.status === 401) { logout(); return; }
-            setStatus(axios.isAxiosError(error) && error.response?.status === 403 ? 'forbidden' : 'error');
-        });
+        }
+        checkSession();
         return () => { cancelled = true; };
     }, [token, checkVersion, logout, updateToken]);
 
@@ -92,7 +125,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const checkedStatus = status === 'authenticated' && verifiedToken !== token ? 'checking' : status;
 
     return (
-        <AuthContext.Provider value={{ user, token, setToken: updateToken, status: checkedStatus, logout, retrySession }}>
+        <AuthContext.Provider value={{ user, token, setToken: updateToken, status: checkedStatus, isCheckingSession, sessionError, logout, retrySession }}>
             {children}
         </AuthContext.Provider>
     );

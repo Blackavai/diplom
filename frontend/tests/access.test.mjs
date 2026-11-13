@@ -34,11 +34,12 @@ async function bundle(entry, file) {
     await writeFile(path, output.outputFiles[0].contents);
     return require(path);
 }
-const { default: api, publicApi, onUnauthorized, apiErrorMessage } = await bundle('src/lib/api.ts', 'api.cjs');
+const { default: api, publicApi, onUnauthorized, apiErrorMessage, setVerifiedSessionToken } = await bundle('src/lib/api.ts', 'api.cjs');
 const { default: Guard } = await bundle('src/pages/AuthRedirect.tsx', 'guard.cjs');
 beforeEach(() => {
     globalThis.__accessCookies = {};
     globalThis.__accessToasts = [];
+    setVerifiedSessionToken(null);
 });
 const fail = (status) => async (config) => {
     throw new axios.AxiosError('Synthetic HTTP failure', 'ERR_BAD_RESPONSE', config, {}, { status, data: {}, headers: {}, config });
@@ -69,6 +70,58 @@ test('public login and recovery do not send session tokens or trigger session er
         await assert.rejects(publicApi.post('/auth/recAns', {}));
         assert.equal(logouts, 0);
         assert.equal(globalThis.__accessToasts.length, 0);
+    } finally { unsubscribe(); }
+});
+
+test('writes are blocked before verification and while a repeated check is pending or failed', async () => {
+    globalThis.__accessCookies.token = 'synthetic-session';
+    let sent = 0;
+    api.defaults.adapter = async (config) => { sent++; return success(config); };
+    for (const method of ['post', 'put', 'patch', 'delete']) {
+        await assert.rejects(api.request({ method, url: '/teams/create', data: {} }), /проверки сессии/);
+    }
+    await assert.rejects(api.get('/users/delete/3'), /проверки сессии/);
+    assert.equal(sent, 0);
+    setVerifiedSessionToken('synthetic-session');
+    await api.post('/teams/create', {});
+    assert.equal(sent, 1);
+    setVerifiedSessionToken(null);
+    await assert.rejects(api.post('/teams/create', {}));
+    assert.equal(sent, 1);
+    setVerifiedSessionToken('synthetic-session');
+    await api.post('/teams/create', {});
+    assert.equal(sent, 2);
+});
+
+test('a changed cookie or explicitly different Bearer cannot write using an old verification', async () => {
+    globalThis.__accessCookies.token = 'synthetic-old';
+    setVerifiedSessionToken('synthetic-old');
+    let sent = 0;
+    api.defaults.adapter = async (config) => { sent++; return success(config); };
+    globalThis.__accessCookies.token = 'synthetic-new';
+    await assert.rejects(api.post('/teams/create', {}));
+    globalThis.__accessCookies.token = 'synthetic-old';
+    await assert.rejects(api.post('/teams/create', {}, { headers: { Authorization: 'Bearer synthetic-other' } }));
+    assert.equal(sent, 0);
+});
+
+test('cookie expiry closes the local session without sending a pending form', async () => {
+    globalThis.__accessCookies.token = 'synthetic-session';
+    setVerifiedSessionToken('synthetic-session');
+    let sent = 0;
+    let logouts = 0;
+    api.defaults.adapter = async (config) => { sent++; return success(config); };
+    const unsubscribe = onUnauthorized(() => { logouts++; setVerifiedSessionToken(null); });
+    try {
+        delete globalThis.__accessCookies.token;
+        await assert.rejects(api.post('/teams/create', {}));
+        assert.equal(logouts, 1);
+        assert.equal(sent, 0);
+        // Cookie может истечь и после временного отказа фоновой проверки.
+        setVerifiedSessionToken(null);
+        await assert.rejects(api.post('/teams/create', {}));
+        assert.equal(logouts, 2);
+        assert.equal(sent, 0);
     } finally { unsubscribe(); }
 });
 
@@ -120,11 +173,11 @@ test('log sanitizer does not expose Authorization or response data', () => {
     assert.equal(apiErrorMessage(new Error('private-token')), 'Ошибка запроса или соединения');
 });
 
-function renderGuard(state) {
+function renderGuard(state, roles = [1]) {
     globalThis.__accessState = state;
     return renderToString(React.createElement(MemoryRouter, { initialEntries: ['/users'] },
         React.createElement(Routes, null,
-            React.createElement(Route, { element: React.createElement(Guard, { roles: [1] }) },
+            React.createElement(Route, { element: React.createElement(Guard, { roles }) },
                 React.createElement(Route, { path: '/users', element: React.createElement('span', null, 'PROTECTED_MANAGER_DATA') }))
         )));
 }
@@ -143,5 +196,21 @@ test('session errors offer retry and do not render protected children', () => {
     const html = renderGuard({ status: 'error', user: null, retrySession() {}, logout() {} });
     assert.ok(html.includes('Повторить'));
     assert.ok(html.includes('Выйти'));
+    assert.equal(html.includes('PROTECTED_MANAGER_DATA'), false);
+});
+
+test('a verified page stays mounted during background checks and temporary errors', () => {
+    const state = { status: 'authenticated', user: { id: 1, role: 1 }, isCheckingSession: true };
+    const checking = renderGuard(state, null);
+    assert.ok(checking.includes('PROTECTED_MANAGER_DATA'));
+    assert.ok(checking.includes('Отправка изменений временно недоступна'));
+    const failed = renderGuard({ ...state, isCheckingSession: false, sessionError: 'Временный отказ' }, null);
+    assert.ok(failed.includes('PROTECTED_MANAGER_DATA'));
+    assert.ok(failed.includes('Временный отказ'));
+});
+
+test('forbidden session closes the verified page', () => {
+    const html = renderGuard({ status: 'forbidden', user: null });
+    assert.ok(html.includes('Доступ запрещён'));
     assert.equal(html.includes('PROTECTED_MANAGER_DATA'), false);
 });
