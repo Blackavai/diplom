@@ -56,11 +56,13 @@ async function main() {
             assert.match(await docs.text(), /Swagger UI/);
             assert.match(await (await request('/api-docs/swagger-ui-init.js')).text(), /"url": "\/"/);
             // The /api-docs route must not be rewritten to /api or the SPA.
-            const workerJwt = require('jsonwebtoken').sign({ id: actor.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+            const workerJwt = token;
             await pool.query('UPDATE users SET role=2 WHERE id=$1', [actor.id]);
             assert.equal((await request('/api/teams', 'GET', undefined, workerJwt)).status, 403);
             await pool.query('UPDATE users SET role=1 WHERE id=$1', [actor.id]);
-            console.log(`PASS proxy: ${label} SPA, login/cookie/Bearer, CRUD, recovery, Swagger, 401/403/404`);
+            assert.equal((await request('/api/auth/logout', 'POST', {}, token)).status, 200);
+            assert.equal((await request('/api/auth/protected', 'GET', undefined, token)).status, 401);
+            console.log(`PASS proxy: ${label} SPA, login/cookie/Bearer, CRUD, recovery, Swagger, logout/revocation, 401/403/404`);
         }
         // Both proxies share the existing per-account limiter; forged XFF cannot reset it.
         for (let index = 0; index < 12; index++) {

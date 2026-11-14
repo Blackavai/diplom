@@ -26,7 +26,7 @@ test('atomic team operations on synthetic PostgreSQL', {
         ids.push((await pool.query(`INSERT INTO users(fname,lname,tg_id,role,post)
             VALUES ('Team','Test',$1,$2,'Test') RETURNING id`, [`teams-test-${index}`, index === 0 ? 1 : 2])).rows[0].id);
     }
-    const token = jwt.sign({ id: ids[0] }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign({ id: ids[0], sessionVersion: 0 }, process.env.JWT_SECRET, { expiresIn: '1h' });
     const missingUser = 2147483647;
     const request = async (method, path, body) => {
         const response = await fetch(base + path, {

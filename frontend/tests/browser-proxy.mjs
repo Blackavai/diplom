@@ -77,9 +77,15 @@ try {
     await until("document.body.innerText.includes('Меню команды')");
     await click('Удалить команду');
     await until(`!document.querySelector('[role=dialog]') && !document.body.innerText.includes(${JSON.stringify(teamName)})`);
+    const oldToken = await evaluate("decodeURIComponent(document.cookie.split('; ').find(value => value.startsWith('token=')).slice(6))");
+    await evaluate("document.querySelector('.item_auth img[alt=Выход]').click()");
+    await until("location.pathname==='/login' && document.body.innerText.includes('Все сессии завершены')");
+    const replayStatus = await evaluate(`fetch('/api/auth/protected', { headers: { Authorization: ${JSON.stringify('Bearer ' + oldToken)} } }).then(response => response.status)`);
+    assert.equal(replayStatus, 401);
+    assert.ok(requests.some((url) => url.endsWith('/api/auth/logout')));
     assert.ok(requests.some((url) => url.endsWith('/api/auth/login')));
     assert.ok(requests.some((url) => url.endsWith('/api/teams/create')));
     assert.ok(requests.every((url) => url.startsWith(origin + '/api/')), 'All API calls must use the frontend origin');
     assert.deepEqual(exceptions, []);
-    console.log(`PASS real browser: ${login}, UI login, verified session, team create/delete, same-origin API`);
+    console.log(`PASS real browser: ${login}, UI login, verified session, team create/delete, logout and revoked JWT, same-origin API`);
 } finally { socket.close(); }

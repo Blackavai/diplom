@@ -2,19 +2,16 @@ import React, { useState } from 'react';
 import '../style/header.css';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from './AuthContext.tsx';
-import { useNotification } from './Notification.tsx';
 
 function Header() {
     const { user, logout } = useAuth();
-    const { addNotification } = useNotification();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     // Проверяем, является ли пользователь админом (роль 1)
     const isAdmin = user?.role === 1;
 
     const handleLogout = () => {
-        logout();
-        addNotification('success', 'Вы вышли из системы');
+        void logout();
         setIsSidebarOpen(false);
     };
 

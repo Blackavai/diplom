@@ -3,8 +3,15 @@ const { isNonEmptyString, answersMatch } = require('../utils/passwordRecovery');
 
 const AuthModel = {
     findUserById: async (id) => {
-        const result = await postgree.query('SELECT id, fname, lname, tg_id, post, role FROM users WHERE id = $1', [id]);
+        const result = await postgree.query('SELECT id, fname, lname, tg_id, post, role, session_version FROM users WHERE id = $1', [id]);
         return result.rows[0] || null;
+    },
+    revokeSessions: async (id, sessionVersion) => {
+        // Повторный выход со старым JWT не отзывает более новую сессию.
+        const result = await postgree.query(`UPDATE users
+            SET session_version = session_version + 1
+            WHERE id = $1 AND session_version = $2 RETURNING id`, [id, sessionVersion]);
+        return result.rowCount === 1;
     },
     findPasswordById: async (id) => {
         const result = await postgree.query('SELECT password FROM users WHERE id = $1', [id]);
@@ -47,7 +54,8 @@ const AuthModel = {
         const query = `
         UPDATE users 
         SET 
-            password = $1
+            password = $1,
+            session_version = session_version + 1
         WHERE id = $2 AND tg_id = $3
         RETURNING id;
     `;

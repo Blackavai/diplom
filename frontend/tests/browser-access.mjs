@@ -24,6 +24,9 @@ const records = [];
 const exceptions = [];
 const interceptionErrors = [];
 let mode = 'worker';
+let holdLogout = false;
+let logoutStatus = 200;
+const pendingLogouts = [];
 let holdSession = false;
 let pendingSessions = [];
 let holdLogin = false;
@@ -68,6 +71,10 @@ async function intercept(event) {
         if (mode === 'expired') return respond(event, 401, { message: 'Недействительная сессия' });
         if (mode === 'unavailable') return respond(event, 500, { message: 'Ошибка сервера' });
         return respond(event, 200, { user: actor() });
+    }
+    if (path === '/api/auth/logout') {
+        if (holdLogout) { pendingLogouts.push(event); return; }
+        return respond(event, logoutStatus, { success: logoutStatus === 200 });
     }
     if (path === '/api/auth/login') {
         if (holdLogin) { pendingLogins.push(event); return; }
@@ -587,6 +594,51 @@ try {
         await closeDialog();
         pass('failed edit preserves selection; successful retry clears it and reopening loads saved data');
     }
+    // Серверный выход проверяем отдельно от локального завершения по 401.
+    mode = 'manager';
+    holdSession = false;
+    for (const resultStatus of [200, 401, 500]) {
+        logoutStatus = resultStatus;
+        await cookie('token', 'synthetic-logout');
+        await navigate('/teams');
+        await until(() => evaluate("Boolean(document.querySelector('.item_auth img[alt=Выход]'))"));
+        const count = records.filter(item => item.path === '/api/auth/logout').length;
+        await evaluate("document.querySelector('.item_auth img[alt=Выход]').click()");
+        await until(() => evaluate("location.pathname==='/login'"));
+        await until(async () => records.filter(item => item.path === '/api/auth/logout').length === count + 1);
+        const outgoing = records.filter(item => item.path === '/api/auth/logout').at(-1);
+        assert.equal(outgoing.method, 'POST');
+        assert.equal(outgoing.hasBearer, true);
+        assert.equal(await hasToken(), false);
+        const message = resultStatus === 500 ? 'Серверный отзыв сессий не подтверждён' : (resultStatus === 401 ? 'Сессия уже завершена' : 'Все сессии завершены');
+        await until(() => hasText(message));
+        pass(`logout ${resultStatus}: explicit Bearer, local cleanup and accurate result`);
+    }
+    logoutStatus = 200;
+    holdLogout = true;
+    await cookie('token', 'synthetic-old-logout');
+    await navigate('/teams');
+    await until(() => evaluate("Boolean(document.querySelector('.item_auth img[alt=Выход]'))"));
+    await evaluate("document.querySelector('.item_auth img[alt=Выход]').click()");
+    await until(async () => pendingLogouts.length === 1);
+    await until(() => evaluate("location.pathname==='/login'"));
+    await cookie('token', 'synthetic-new-session');
+    await navigate('/teams');
+    await until(() => evaluate("Boolean(document.querySelector('.item_auth img[alt=Выход]'))"));
+    holdLogout = false;
+    await respond(pendingLogouts.shift(), 200, { success: true });
+    await evaluate('new Promise(resolve => setTimeout(resolve, 100))');
+    assert.equal(await hasToken(), true);
+    assert.equal(await evaluate('location.pathname'), '/teams');
+    pass('late logout response preserves a newer local session');
+    const logoutCount = records.filter(item => item.path === '/api/auth/logout').length;
+    mode = 'expired';
+    await cookie('token', 'synthetic-expired');
+    await navigate('/tasks');
+    await until(() => evaluate("location.pathname==='/login'"));
+    assert.equal(await hasToken(), false);
+    assert.equal(records.filter(item => item.path === '/api/auth/logout').length, logoutCount);
+    pass('automatic 401 cleanup does not recursively call server logout');
     assert.deepEqual(interceptionErrors, []);
     assert.deepEqual(exceptions, []);
     console.log(`Browser scenarios passed: ${passed}; API responses are synthetic, no working backend contacted`);

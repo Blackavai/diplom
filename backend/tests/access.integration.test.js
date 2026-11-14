@@ -30,7 +30,7 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
         const result = await pool.query(`INSERT INTO users (fname,lname,tg_id,role,post,password,question,answer)
             VALUES ('Access','Test',$1,$2,'Test','synthetic-pass','Synthetic question','synthetic-answer') RETURNING id`, [tg, role]);
         const id = result.rows[0].id;
-        return { id, tg_id: tg, role, token: jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '1h' }) };
+        return { id, tg_id: tg, role, token: jwt.sign({ id, sessionVersion: 0 }, process.env.JWT_SECRET, { expiresIn: '1h' }) };
     }
     const manager = await user(1);
     const worker = await user();
@@ -77,12 +77,12 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
     ];
     const protectedRoutes = [...managerRoutes,
         ...['team', 'tasks', 'vacation'].map((part) => ['GET', `/api/users/${worker.id}/${part}`]),
-        ['POST', '/api/reports/new'], ['GET', '/api/auth/protected']
+        ['POST', '/api/reports/new'], ['GET', '/api/auth/protected'], ['POST', '/api/auth/logout']
     ];
 
     await t.test('every protected route rejects anonymous, forged and expired tokens without writes', async () => {
         const before = await snapshot();
-        const invalid = [null, { token: 'forged' }, { token: jwt.sign({ id: worker.id }, process.env.JWT_SECRET, { expiresIn: -1 }) }];
+        const invalid = [null, { token: 'forged' }, { token: jwt.sign({ id: worker.id, sessionVersion: 0 }, process.env.JWT_SECRET, { expiresIn: -1 }) }];
         for (const actor of invalid) {
             for (const [method, path] of protectedRoutes) {
                 const response = await request(method, path, actor, ['GET', 'DELETE'].includes(method) ? undefined : {});
@@ -130,11 +130,11 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
         const missing = await user();
         await pool.query('DELETE FROM users WHERE id=$1', [missing.id]);
         const tokens = [missing.token,
-            jwt.sign({ id: worker.id }, 'synthetic-wrong-secret', { expiresIn: '1h' }),
-            jwt.sign({ id: worker.id }, process.env.JWT_SECRET, { algorithm: 'HS384', expiresIn: '1h' }),
-            jwt.sign({ id: worker.id }, process.env.JWT_SECRET),
-            jwt.sign({ id: String(worker.id) }, process.env.JWT_SECRET, { expiresIn: '1h' }),
-            jwt.sign({ id: -1 }, process.env.JWT_SECRET, { expiresIn: '1h' })
+            jwt.sign({ id: worker.id, sessionVersion: 0 }, 'synthetic-wrong-secret', { expiresIn: '1h' }),
+            jwt.sign({ id: worker.id, sessionVersion: 0 }, process.env.JWT_SECRET, { algorithm: 'HS384', expiresIn: '1h' }),
+            jwt.sign({ id: worker.id, sessionVersion: 0 }, process.env.JWT_SECRET),
+            jwt.sign({ id: String(worker.id), sessionVersion: 0 }, process.env.JWT_SECRET, { expiresIn: '1h' }),
+            jwt.sign({ id: -1, sessionVersion: 0 }, process.env.JWT_SECRET, { expiresIn: '1h' })
         ];
         for (const token of tokens) assert.equal((await request('GET', '/api/auth/protected', { token })).status, 401);
     });
@@ -160,7 +160,7 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
 
     await t.test('unknown DB role is denied and DB errors do not become invalid-session responses', async (subtest) => {
         const AuthModel = require('../models/authModel');
-        subtest.mock.method(AuthModel, 'findUserById', async () => ({ id: worker.id, role: 99 }));
+        subtest.mock.method(AuthModel, 'findUserById', async () => ({ id: worker.id, role: 99, session_version: 0 }));
         assert.equal((await request('GET', '/api/users', worker)).status, 403);
         AuthModel.findUserById = async () => { throw new Error('synthetic-private-SQL'); };
         const response = await request('GET', '/api/users', worker);

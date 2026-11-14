@@ -37,7 +37,7 @@ test('password hashing, transition and login limits over HTTP', { skip: process.
         const result = await pool.query(`INSERT INTO users(fname,lname,tg_id,role,post,password,question,answer)
             VALUES ('Password','Test',$1,$2,'Test',$3,'Synthetic question','synthetic-answer') RETURNING id`, [tg_id, role, password]);
         const id = result.rows[0].id;
-        return { id, tg_id, token: jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '1h' }) };
+        return { id, tg_id, token: jwt.sign({ id, sessionVersion: 0 }, process.env.JWT_SECRET, { expiresIn: '1h' }) };
     }
     const manager = await user(null, 1);
     async function post(path, body, actor, headers = {}) {

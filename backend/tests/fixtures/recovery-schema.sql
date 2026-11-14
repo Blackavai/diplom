@@ -14,6 +14,7 @@ CREATE TABLE users (
     role integer NOT NULL REFERENCES role(id),
     post varchar(255) NOT NULL,
     password text,
+    session_version integer NOT NULL DEFAULT 0,
     question varchar(255),
     answer varchar(255),
     chat_id bigint,

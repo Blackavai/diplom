@@ -203,7 +203,7 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *   get:
  *     tags: [Authorization]
  *     summary: Получить текущего пользователя по Bearer JWT
- *     description: Проверяет HS256, срок действия, существование пользователя и актуальную роль в БД. Пароль и секретный ответ не возвращаются.
+ *     description: Проверяет HS256, срок действия, существование пользователя, актуальную роль и sessionVersion в БД. JWT без версии больше не принимается. Пароль и секретный ответ не возвращаются.
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -219,6 +219,26 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
 
 router.post("/createUser", authenticate, requireManager, AuthController.insertNewUser);
 router.delete("/delUser/:id", authenticate, requireManager, AuthController.deleteUser);
+/**
+ * @openapi
+ * /api/auth/logout:
+ *   post:
+ *     tags: [Authorization]
+ *     summary: Завершить все сессии текущего пользователя
+ *     description: Требует Bearer JWT с актуальной sessionVersion. Увеличивает версию в БД; все прежние JWT отклоняются. Cookie удаляет клиент. Уже начатые операции не отменяются.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Все прежние сессии завершены
+ *       401:
+ *         description: Сессия уже недействительна
+ *       403:
+ *         description: Роль не разрешена
+ *       500:
+ *         description: Отзыв не подтверждён, безопасная ошибка сервера
+ */
+router.post("/logout", authenticate, AuthController.logout);
 router.post("/login", AuthController.loginUser);
 router.get("/protected", authenticate, AuthController.protected);
 router.post("/recPass", AuthController.recPass);

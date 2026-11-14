@@ -16,7 +16,8 @@ async function authenticate(req, res, next) {
     try {
         decoded = jwt.verify(match[1], process.env.JWT_SECRET, { algorithms: ['HS256'] });
         if (!decoded || typeof decoded !== 'object' || typeof decoded.id !== 'number' ||
-            positiveId(decoded.id) === null || !Number.isFinite(decoded.exp)) {
+            positiveId(decoded.id) === null || !Number.isFinite(decoded.exp) ||
+            !Number.isInteger(decoded.sessionVersion) || decoded.sessionVersion < 0 || decoded.sessionVersion > 2147483647) {
             return res.status(401).json({ message: 'Недействительная сессия' });
         }
     } catch {
@@ -24,7 +25,7 @@ async function authenticate(req, res, next) {
     }
     try {
         const user = await AuthModel.findUserById(decoded.id);
-        if (!user) return res.status(401).json({ message: 'Недействительная сессия' });
+        if (!user || user.session_version !== decoded.sessionVersion) return res.status(401).json({ message: 'Недействительная сессия' });
         if (![1, 2].includes(user.role)) return res.status(403).json({ message: 'Доступ запрещён' });
         req.user = user;
         return next();

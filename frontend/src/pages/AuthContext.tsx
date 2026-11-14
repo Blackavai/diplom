@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import type { ReactNode } from 'react';
 import Cookies from 'js-cookie';
 import axios from 'axios';
-import api, { onUnauthorized, setVerifiedSessionToken } from '@/lib/api';
+import { toast } from 'sonner';
+import api, { publicApi, onUnauthorized, setVerifiedSessionToken } from '@/lib/api';
 
 interface AuthUser {
     id: number;
@@ -22,7 +23,7 @@ interface AuthContextType {
     status: SessionStatus;
     isCheckingSession: boolean;
     sessionError: string | null;
-    logout: () => void;
+    logout: () => Promise<void>;
     retrySession: () => void;
 }
 
@@ -52,7 +53,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSessionError(null);
         setCheckVersion((value) => value + 1);
     }, []);
-    const logout = useCallback(() => updateToken(null), [updateToken]);
+    const clearLocalSession = useCallback(() => updateToken(null), [updateToken]);
+    const logout = useCallback(async () => {
+        const outgoingToken = Cookies.get('token');
+        clearLocalSession();
+        if (!outgoingToken) return;
+        try {
+            // Выход доступен и при неудавшейся проверке сессии. Не запускаем
+            // обработчики 401 защищённого клиента повторно.
+            await publicApi.post('/auth/logout', {}, {
+                headers: { Authorization: `Bearer ${outgoingToken}` }, timeout: 15000
+            });
+            if (!Cookies.get('token')) toast.success('Все сессии завершены');
+        } catch (error: unknown) {
+            if (Cookies.get('token')) return;
+            if (axios.isAxiosError(error) && error.response?.status === 401) {
+                toast.success('Сессия уже завершена');
+            } else {
+                toast.error('Вы вышли на этом устройстве. Серверный отзыв сессий не подтверждён.');
+            }
+        }
+    }, [clearLocalSession]);
     const retrySession = useCallback(() => {
         setVerifiedSessionToken(null);
         setIsCheckingSession(true);
@@ -65,7 +86,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setCheckVersion((value) => value + 1);
     }, []);
 
-    useEffect(() => onUnauthorized(logout), [logout]);
+    useEffect(() => onUnauthorized(clearLocalSession), [clearLocalSession]);
 
     useEffect(() => {
         if (!token) return;
@@ -94,7 +115,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 const cookieToken = Cookies.get('token') || null;
                 if (cookieToken !== token) { updateToken(cookieToken); return; }
                 setIsCheckingSession(false);
-                if (axios.isAxiosError(error) && error.response?.status === 401) { logout(); return; }
+                if (axios.isAxiosError(error) && error.response?.status === 401) { clearLocalSession(); return; }
                 if (axios.isAxiosError(error) && error.response?.status === 403) {
                     setUser(null);
                     setVerifiedToken(null);
@@ -110,7 +131,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         checkSession();
         return () => { cancelled = true; };
-    }, [token, checkVersion, logout, updateToken]);
+    }, [token, checkVersion, clearLocalSession, updateToken]);
 
     useEffect(() => {
         const onFocus = () => {

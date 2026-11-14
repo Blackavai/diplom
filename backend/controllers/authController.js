@@ -81,7 +81,10 @@ const AuthController = {
                 }
             }
 
-            const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+            // Используем версию, прочитанную вместе с проверяемым паролем.
+            // Одновременный reset сделает такой JWT недействительным.
+            if (!Number.isInteger(user.session_version) || user.session_version < 0) throw new Error('Invalid session version');
+            const token = jwt.sign({ id: user.id, sessionVersion: user.session_version }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
             // Устанавливаем токен в куки
             res.cookie('token', token, {
@@ -116,6 +119,15 @@ const AuthController = {
                 } });
         } catch (err) {
             return authFailure(res, err);
+        }
+    },
+    logout: async (req, res) => {
+        try {
+            await AuthModel.revokeSessions(req.user.id, req.user.session_version);
+            // Cookie удаляет frontend: поздний HTTP-ответ не должен стереть новый вход.
+            return res.status(200).json({ message: 'Все сессии завершены', success: true });
+        } catch (error) {
+            return authFailure(res, error);
         }
     },
     protected: async (req, res) => {
