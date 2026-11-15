@@ -106,6 +106,17 @@ try {
     await until("document.body.innerText.includes('Меню команды')");
     await click('Удалить команду');
     await until(`!document.querySelector('[role=dialog]') && !document.body.innerText.includes(${JSON.stringify(teamName)})`);
+    await call('Page.navigate', { url: origin + '/tasks' });
+    await until("Array.from(document.querySelectorAll('.rowUserTask')).some(row=>row.textContent.includes('Browser proxy report task'))");
+    await until("!document.body.innerText.includes('Проверка сессии')");
+    await evaluate("Array.from(document.querySelectorAll('.rowUserTask')).find(row=>row.textContent.includes('Browser proxy report task')).querySelector('img.arrowAnim').click()");
+    await until("Boolean(document.querySelector('input[placeholder=\"Отчёт о выполнении задачи\"]'))");
+    await fill('Отчёт о выполнении задачи', 'Synthetic real proxy report');
+    const beforeReport = requests.filter(url => url.endsWith('/api/reports/new')).length;
+    await evaluate("{const button=Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Отправить отчёт');button.click();button.click();}");
+    await until("!document.querySelector('[role=dialog]') && !Array.from(document.querySelectorAll('.rowUserTask')).some(row=>row.textContent.includes('Browser proxy report task'))");
+    assert.equal(requests.filter(url => url.endsWith('/api/reports/new')).length, beforeReport + 1);
+    assert.ok(responseStatuses.some(item => item.path === '/api/reports/new' && item.status === 200));
     const oldToken = await evaluate("decodeURIComponent(document.cookie.split('; ').find(value => value.startsWith('token=')).slice(6))");
     await evaluate("document.querySelector('.item_auth img[alt=Выход]').click()");
     await until("location.pathname==='/login' && document.body.innerText.includes('Все сессии завершены')");
@@ -117,7 +128,7 @@ try {
     assert.ok(requests.some((url) => url.endsWith('/api/teams/create')));
     assert.ok(requests.every((url) => url.startsWith(origin + '/api/')), 'All API calls must use the frontend origin');
     assert.deepEqual(exceptions, []);
-    console.log(`PASS real browser: ${login}, UI login, employee create/list/delete, verified session, team create/delete, logout and revoked JWT, same-origin API`);
+    console.log(`PASS real browser: ${login}, UI login, employee create/list/delete, verified session, team create/delete, report submit/completion, logout and revoked JWT, same-origin API`);
 } catch (error) {
     const state = await evaluate("({path:location.pathname,role:document.querySelector('[role=combobox]')?.textContent,inputs:Array.from(document.querySelectorAll('[role=dialog] input')).map(input=>({placeholder:input.placeholder,length:input.value.length,disabled:input.disabled})),messages:Array.from(document.querySelectorAll('[data-sonner-toast]')).map(toast=>toast.textContent)})").catch(() => null);
     console.error('Browser state:', JSON.stringify(state));

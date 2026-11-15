@@ -18,6 +18,11 @@ async function main() {
             await pool.query(`INSERT INTO users(fname,lname,tg_id,role,post,password)
                 SELECT 'Browser','Manager','browser-proxy-manager',1,'Test',$1
                 WHERE NOT EXISTS (SELECT 1 FROM users WHERE tg_id='browser-proxy-manager')`, [hash]);
+            await pool.query(`INSERT INTO task_list(content,id_user,start_date,end_date,status)
+                SELECT 'Browser proxy report task',id,'2026-01-01','2099-01-01',false FROM users
+                WHERE tg_id='browser-proxy-manager' AND NOT EXISTS (
+                    SELECT 1 FROM task_list WHERE id_user=users.id AND content='Browser proxy report task' AND status=false
+                )`);
             console.log('Synthetic browser fixture ready');
             return;
         }
@@ -49,6 +54,16 @@ async function main() {
             assert.equal((await (await request(`/api/teams/view/${id}`, 'GET', undefined, token)).json()).view.length, 1);
             assert.equal((await request(`/api/teams/delete/${id}`, 'DELETE', undefined, token)).status, 200);
             assert.equal((await request(`/api/teams/delete/${id}`, 'DELETE', undefined, token)).status, 404);
+            const task = (await pool.query(`INSERT INTO task_list(content,id_user,start_date,end_date,status)
+                VALUES ('Proxy report smoke',$1,'2026-01-01','2099-01-01',false) RETURNING id`, [actor.id])).rows[0];
+            const reportBody = { id_task: task.id, text_report: '😀'.repeat(255), end_date: '2026-11-15T00:00:00+03:00' };
+            assert.equal((await request('/api/reports/new', 'POST', { ...reportBody, end_date: '2026-02-30' }, token)).status, 400);
+            assert.equal((await request('/api/reports/new', 'POST', reportBody, token)).status, 200);
+            const report = (await pool.query("SELECT text_report,to_char(end_date,'YYYY-MM-DD') AS date FROM report_list WHERE id_task=$1", [task.id])).rows[0];
+            assert.equal(report.text_report, reportBody.text_report);
+            assert.equal(report.date, '2026-11-15');
+            const tasks = (await (await request(`/api/users/${actor.id}/tasks`, 'GET', undefined, token)).json()).user;
+            assert.equal(tasks.some(item => item.id === task.id), false);
             assert.equal((await request('/api/auth/recPass', 'POST', { tg_id: login })).status, 200);
             assert.equal((await request('/api/no-such-route')).status, 404);
             const docs = await request('/api-docs/');
@@ -62,7 +77,7 @@ async function main() {
             await pool.query('UPDATE users SET role=1 WHERE id=$1', [actor.id]);
             assert.equal((await request('/api/auth/logout', 'POST', {}, token)).status, 200);
             assert.equal((await request('/api/auth/protected', 'GET', undefined, token)).status, 401);
-            console.log(`PASS proxy: ${label} SPA, login/cookie/Bearer, CRUD, recovery, Swagger, logout/revocation, 401/403/404`);
+            console.log(`PASS proxy: ${label} SPA, login/cookie/Bearer, CRUD, report validation/completion, recovery, Swagger, logout/revocation, 400/401/403/404`);
         }
         // Both proxies share the existing per-account limiter; forged XFF cannot reset it.
         for (let index = 0; index < 12; index++) {

@@ -1,6 +1,6 @@
 const reportModel = require("../models/reportModel");
 const { positiveId } = require('../middleware/authMiddleware');
-const { isNonEmptyString } = require('../utils/passwordRecovery');
+const { isValidReportText, isValidReportDate } = require('../utils/reportValidation');
 
 const reportController = {
     getAllReport: async (req, res) => {
@@ -25,11 +25,11 @@ const reportController = {
     newReport: async (req, res) => {
         const { id_task, text_report, end_date } = req.body || {};
         const taskId = positiveId(id_task);
-        if (taskId === null || !isNonEmptyString(text_report) || !isNonEmptyString(end_date, 40) || !Number.isFinite(Date.parse(end_date))) {
+        if (taskId === null || !isValidReportText(text_report) || !isValidReportDate(end_date)) {
             return res.status(400).json({ message: 'Некорректные данные отчёта' });
         }
         try {
-            // The author always comes from the verified session, never body.id_user.
+            // Автор всегда берётся из проверенной сессии, а не из body.id_user.
             const report = await reportModel.newReports(taskId, req.user.id, text_report, end_date);
             if (!report) return res.status(404).json({ message: 'Задача не найдена или недоступна' });
             return res.json({ message: "Отчёт успешно отправлен" });

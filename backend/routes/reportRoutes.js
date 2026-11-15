@@ -123,13 +123,16 @@ router.put("/accept/:id", requireManager, reportController.acceptReport);
  *               id_task:
  *                 type: integer
  *                 minimum: 1
+ *                 maximum: 2147483647
  *               text_report:
  *                 type: string
  *                 minLength: 1
  *                 maxLength: 255
+ *                 description: Непустой текст до 255 Unicode-символов; NUL и одиночные суррогаты запрещены. Пробелы и содержимое сохраняются без нормализации.
  *               end_date:
  *                 type: string
- *                 description: Дата или ISO timestamp, как в текущем frontend
+ *                 maxLength: 40
+ *                 description: Реальная дата YYYY-MM-DD (годы 0001–9999) или ISO timestamp с T, секундами и Z либо смещением ±HH:MM до 15:59. Необязательная дробная часть секунд поддерживается. Сохраняется календарная часть даты без пересчёта в UTC, как в действующем API.
  *     responses:
  *       200:
  *         description: Отчёт и завершение задачи сохранены
