@@ -65,7 +65,25 @@ async function main() {
             const tasks = (await (await request(`/api/users/${actor.id}/tasks`, 'GET', undefined, token)).json()).user;
             assert.equal(tasks.some(item => item.id === task.id), false);
             assert.equal((await request('/api/auth/recPass', 'POST', { tg_id: login })).status, 200);
-            assert.equal((await request('/api/no-such-route')).status, 404);
+            const missing = await request('/api/no-such-route?token=synthetic-private-proxy');
+            assert.equal(missing.status, 404);
+            assert.match(missing.headers.get('content-type'), /application\/json/);
+            assert.equal(missing.headers.get('cache-control'), 'no-store');
+            assert.deepEqual(await missing.json(), { message: 'Маршрут API не найден' });
+            for (const [body, extraHeaders, status, message] of [
+                ['{"password":"synthetic-private-proxy"', {}, 400, 'Некорректный JSON'],
+                [JSON.stringify({ password: 'synthetic-private-proxy', padding: 'x'.repeat(102400) }), {}, 413, 'Превышен допустимый размер запроса'],
+                ['{}', { 'Content-Type': 'application/json; charset=synthetic-private-proxy' }, 415, 'Неподдерживаемая кодировка запроса'],
+                ['{}', { 'Content-Encoding': 'synthetic-private-proxy' }, 415, 'Неподдерживаемая кодировка запроса'],
+                ['synthetic-private-proxy', { 'Content-Encoding': 'gzip' }, 400, 'Некорректный запрос']
+            ]) {
+                const technical = await fetch(origin + '/api/auth/login', { method: 'POST', body,
+                    headers: { Host: 'localhost', 'Content-Type': 'application/json', Authorization: 'Bearer synthetic-private-proxy', ...extraHeaders } });
+                assert.equal(technical.status, status);
+                assert.match(technical.headers.get('content-type'), /application\/json/);
+                assert.equal(technical.headers.get('cache-control'), 'no-store');
+                assert.deepEqual(await technical.json(), { message });
+            }
             const docs = await request('/api-docs/');
             assert.equal(docs.status, 200);
             assert.match(await docs.text(), /Swagger UI/);
@@ -77,7 +95,7 @@ async function main() {
             await pool.query('UPDATE users SET role=1 WHERE id=$1', [actor.id]);
             assert.equal((await request('/api/auth/logout', 'POST', {}, token)).status, 200);
             assert.equal((await request('/api/auth/protected', 'GET', undefined, token)).status, 401);
-            console.log(`PASS proxy: ${label} SPA, login/cookie/Bearer, CRUD, report validation/completion, recovery, Swagger, logout/revocation, 400/401/403/404`);
+            console.log(`PASS proxy: ${label} SPA, login/cookie/Bearer, CRUD, report completion, recovery, Swagger, logout/revocation, JSON 400/401/403/404/413/415`);
         }
         // Both proxies share the existing per-account limiter; forged XFF cannot reset it.
         for (let index = 0; index < 12; index++) {

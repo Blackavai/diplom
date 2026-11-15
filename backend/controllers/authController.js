@@ -56,14 +56,10 @@ const AuthController = {
     },
 
     deleteUser: async (req, res) => {
+        res.locals.errorOperation = 'Ошибка удаления сотрудника';
         const { id } = req.params;
-        try {
-            const delUser = await AuthModel.delUser(id);
-            return res.status(201).json({ message: "Пользователь успешно удалён" });
-        } catch (err) {
-            console.error(err);
-            return res.status(500).json({ message: "Ошибка сервера" });
-        }
+        const delUser = await AuthModel.delUser(id);
+        return res.status(201).json({ message: "Пользователь успешно удалён" });
     },
 
     loginUser: async (req, res) => {

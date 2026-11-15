@@ -17,6 +17,8 @@ test('session revocation over HTTP on synthetic PostgreSQL', { skip: process.env
     const app = express();
     app.use(express.json());
     app.use('/api/auth', require('../routes/authRoutes'));
+    app.use('/api', require('../middleware/errorMiddleware').apiNotFound);
+    app.use(require('../middleware/errorMiddleware').apiErrorHandler);
     const server = app.listen(0, '127.0.0.1');
     t.after(() => new Promise((resolve) => server.close(resolve)));
     await once(server, 'listening');

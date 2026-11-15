@@ -9,6 +9,7 @@ const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const teamRoutes = require("./routes/teamRoutes");
 const reportRoutes = require("./routes/reportRoutes");
+const { apiNotFound, apiErrorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
 
@@ -49,6 +50,10 @@ app.use("/api/teams", teamRoutes);
 app.use("/api/reports", reportRoutes);
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+app.use('/api', apiNotFound);
+// Express 5 передаёт сюда также отклонённые Promise из async-маршрутов.
+app.use(apiErrorHandler);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

@@ -20,6 +20,8 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
     for (const name of ['auth', 'user', 'team', 'task', 'report']) {
         app.use(`/api/${name === 'auth' ? name : name + 's'}`, require(`../routes/${name}Routes`));
     }
+    app.use('/api', require('../middleware/errorMiddleware').apiNotFound);
+    app.use(require('../middleware/errorMiddleware').apiErrorHandler);
     const server = app.listen(0, '127.0.0.1');
     t.after(() => new Promise((resolve) => server.close(resolve)));
     await once(server, 'listening');
