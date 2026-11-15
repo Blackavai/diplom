@@ -16,7 +16,28 @@ import { useNotification } from './Notification.tsx';
 import imgUsersNone from "@/assets/users_none.png";
 import { Label } from "@/components/ui/label"
 
-export function DialogDemo({ user, onDelete }) {
+interface UserSummary {
+    id: number;
+    fname: string;
+    lname: string;
+    tg_id: string;
+    post: string;
+}
+
+interface CreatedUser extends UserSummary {
+    role: 1 | 2;
+}
+
+interface CreateUserResponse {
+    user: CreatedUser;
+}
+
+function isValidUserField(value: string) {
+    if (!value.trim() || value.includes('\0') || /[\uD800-\uDFFF]/u.test(value)) return false;
+    return Array.from(value).length <= 255;
+}
+
+export function DialogDemo({ user, onDelete }: { user: UserSummary; onDelete: (id: number) => Promise<void> }) {
     const [CheckTeam, setCheckTeam] = useState([]);
     const [CheckVac, setCheckVac] = useState([]);
     const [CheckTask, setCheckTask] = useState([]);
@@ -103,7 +124,7 @@ export function DialogDemo({ user, onDelete }) {
     );
 }
 
-export function DialogAddUser() {
+export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) => void }) {
     const [pending, setPending] = useState(false);
     const busy = useRef(false);
     const [fname, setFname] = useState("");
@@ -112,16 +133,28 @@ export function DialogAddUser() {
     const [pass, setPass] = useState("");
     const [post, setPost] = useState("");
     const [roleText, setRoleText] = useState(""); // Текстовое значение роли
-    const [roleValue, setRoleValue] = useState(null); // Числовое значение роли
+    const [roleValue, setRoleValue] = useState<1 | 2 | null>(null); // Числовое значение роли
     const { addNotification } = useNotification();
 
     const addUserData = async () => {
         if (busy.current) return;
         if (!pass.trim()) { addNotification('error', 'Введите пароль'); return; }
+        if (!isValidUserField(fname) || !isValidUserField(lname) || !isValidUserField(post)) {
+            addNotification('error', 'Заполните имя, фамилию и должность: до 255 символов');
+            return;
+        }
+        if (!isValidUserField(tg_id) || tg_id.length > 255) {
+            addNotification('error', 'Введите корректный Telegram ID длиной до 255');
+            return;
+        }
+        if (roleValue !== 1 && roleValue !== 2) {
+            addNotification('error', 'Выберите роль: менеджер или работник');
+            return;
+        }
         busy.current = true;
         setPending(true);
         try {
-            await api.post(`/auth/createUser`, {
+            const { data } = await api.post<CreateUserResponse>(`/auth/createUser`, {
                 fname,
                 lname,
                 tg_id,
@@ -130,6 +163,7 @@ export function DialogAddUser() {
                 pass,
             }, { timeout: 15000 });
 
+            onCreated(data.user);
             addNotification('success', 'Пользователь добавлен в систему');
 
             setFname("");
@@ -164,6 +198,7 @@ export function DialogAddUser() {
                         <Label htmlFor="username" className="text-right ">
                             Имя:
                             <input
+                                disabled={pending}
                                 type="text"
                                 className="col-span-3 outlineFocus w-full"
                                 placeholder={'Введите имя сотрудника'}
@@ -176,6 +211,7 @@ export function DialogAddUser() {
                         <Label htmlFor="username" className="text-right ">
                             Фамилия:
                             <input
+                                disabled={pending}
                                 type="text"
                                 className="col-span-3 outlineFocus w-full"
                                 placeholder={'Введите фамилию сотрудника'}
@@ -188,6 +224,7 @@ export function DialogAddUser() {
                         <Label htmlFor="username" className="text-right ">
                             TG_id:
                             <input
+                                disabled={pending}
                                 type="text"
                                 className="col-span-3 outlineFocus w-full"
                                 placeholder={'Введите телеграм id сотрудника'}
@@ -200,6 +237,7 @@ export function DialogAddUser() {
                         <Label htmlFor="username" className="text-right ">
                             Пароль:
                             <input
+                                disabled={pending}
                                 type="password"
                                 className="col-span-3 outlineFocus w-full"
                                 placeholder={'Введите пароль сотрудника'}
@@ -212,6 +250,7 @@ export function DialogAddUser() {
                         <Label htmlFor="username" className="text-right ">
                             Роль:
                             <input
+                                disabled={pending}
                                 type="text"
                                 className="col-span-3 outlineFocus w-full"
                                 placeholder={'Frontend, Backend, Дизайнер, Тестировщик и т.п.'}
@@ -223,15 +262,12 @@ export function DialogAddUser() {
                     <div className="grid grid-cols-1 items-center gap-4 hrTitle">
                         <Label htmlFor="username" className="text-right ">
                             Должность:
-                            <Select onValueChange={(value) => {
+                            <Select value={roleText} disabled={pending} onValueChange={(value) => {
                                 setRoleText(value);
 
-                                const roleMapping = {
-                                    "менеджер": 1,
-                                    "работник": 2,
-                                };
-
-                                setRoleValue(roleMapping[value] || null); // Используем value вместо selectedValue
+                                if (value === 'менеджер') setRoleValue(1);
+                                else if (value === 'работник') setRoleValue(2);
+                                else setRoleValue(null);
                             }}>
                                 <SelectTrigger className="w-full border-none p-0 focus-visible:none">
                                     <SelectValue placeholder="Работник или менеджер"/>
@@ -257,24 +293,50 @@ export function DialogAddUser() {
 }
 
 function User() {
-    const [data, setData] = useState([]);
+    const [data, setData] = useState<UserSummary[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const {addNotification} = useNotification();
 
-    useEffect(() => {
-        api
-            .get("/users")
-            .then((response) => {
-                setData(response.data);
-            })
-            .catch((error) => {
-                console.log(apiErrorMessage(error));
-            });
-    }, []);
+    const [refreshVersion, setRefreshVersion] = useState(0);
+    const [listError, setListError] = useState<string | null>(null);
+    const requestVersion = useRef(0);
 
-    const deleteUser = async (userId) => {
+    useEffect(() => {
+        let active = true;
+        const version = ++requestVersion.current;
+        setListError(null);
+        async function loadUsers() {
+            try {
+                const response = await api.get<UserSummary[]>('/users', { timeout: 15000 });
+                if (!Array.isArray(response.data)) throw new Error('Некорректный список сотрудников');
+                if (active && version === requestVersion.current) setData(response.data);
+            } catch (error: unknown) {
+                if (!active || version !== requestVersion.current) return;
+                console.error('Ошибка загрузки сотрудников:', apiErrorMessage(error));
+                setListError('Не удалось обновить список сотрудников. Повторите попытку.');
+            }
+        }
+        void loadUsers();
+        return () => { active = false; };
+    }, [refreshVersion]);
+
+    function refreshUsers() {
+        requestVersion.current++;
+        setRefreshVersion((value) => value + 1);
+    }
+
+    function handleUserCreated(user: CreatedUser) {
+        // Сразу показываем созданную запись; затем перечитываем серверную сортировку.
+        // Поздний ответ прежней загрузки не должен затереть нового сотрудника.
+        if (user) setData((current) => [...current.filter((item) => item.id !== user.id), user]);
+        refreshUsers();
+    }
+
+    const deleteUser = async (userId: number) => {
         try {
             await api.delete(`/auth/delUser/${userId}`);
+            // Прежняя загрузка списка могла начаться до удаления этой записи.
+            requestVersion.current++;
             // Update the user list after deletion
             setData((prevData) => prevData.filter(user => user.id !== userId));
             addNotification('success', 'Сотрудник удалён из системы');
@@ -303,8 +365,14 @@ function User() {
                         />
                         <button type={'submit'} className={'buttonSearch'}/>
                     </div>
-                    <DialogAddUser />
+                    <DialogAddUser onCreated={handleUserCreated} />
                 </div>
+                {listError && (
+                    <div role="alert">
+                        <p>{listError}</p>
+                        <button type="button" className="btnInteractive" onClick={refreshUsers}>Повторить</button>
+                    </div>
+                )}
                 <div className={'columnUser'}>
                     {filteredUsers.length === 0 ? (
                         <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center'}}>

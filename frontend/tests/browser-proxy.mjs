@@ -12,6 +12,7 @@ let id = 0;
 const pending = new Map();
 const requests = [];
 const exceptions = [];
+const responseStatuses = [];
 function call(method, params = {}) {
     const current = ++id;
     return new Promise((resolve, reject) => {
@@ -31,6 +32,8 @@ socket.addEventListener('message', ({ data }) => {
     } else if (message.method === 'Network.requestWillBeSent') {
         const url = message.params.request.url;
         if (/\/api\//.test(url)) requests.push(url);
+    } else if (message.method === 'Network.responseReceived' && message.params.response.url.startsWith(origin + '/api/')) {
+        responseStatuses.push({ path: new URL(message.params.response.url).pathname, status: message.params.response.status });
     } else if (message.method === 'Runtime.exceptionThrown') exceptions.push(message.params.exceptionDetails.text);
 });
 const evaluate = async (expression) => {
@@ -64,6 +67,32 @@ try {
     await fill('Пароль', 'synthetic-proxy-password');
     await click('Войти');
     await until("location.pathname==='/users' && Boolean(document.querySelector('button.addUser'))");
+    const employeeName = `Browser employee ${Date.now()}`;
+    await evaluate("document.querySelector('button.addUser').click()");
+    await until("Boolean(document.querySelector('input[placeholder=\"Введите имя сотрудника\"]'))");
+    await fill('Введите имя сотрудника', employeeName);
+    await fill('Введите фамилию сотрудника', 'Test');
+    await fill('Введите телеграм id сотрудника', 'browser-created-' + Date.now());
+    await fill('Введите пароль сотрудника', 'synthetic-created-password');
+    await fill('Frontend, Backend, Дизайнер, Тестировщик и т.п.', 'Test');
+    await evaluate("document.querySelector('[role=combobox]').click()");
+    await until("document.querySelectorAll('[role=option]').length>0");
+    const rolePoint = await evaluate("{const item=Array.from(document.querySelectorAll('[role=option]')).find(option=>option.textContent.includes('Работник'));const rect=item.getBoundingClientRect();({x:rect.x+rect.width/2,y:rect.y+rect.height/2})}");
+    await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...rolePoint });
+    await call('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...rolePoint });
+    await call('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...rolePoint });
+    await until("!document.querySelector('[role=option]') && document.querySelector('[role=combobox]').textContent.includes('Работник')");
+    await until("!document.body.innerText.includes('Проверка сессии')");
+    await click('Добавить пользователя');
+    await until(`Array.from(document.querySelectorAll('.rowUser')).some(row=>row.textContent.includes(${JSON.stringify(employeeName)}))`);
+    await until("document.querySelector('input[placeholder=\"Введите имя сотрудника\"]').value===''");
+    assert.equal(await evaluate("document.querySelector('[role=combobox]').textContent.includes('Работник или менеджер')"), true);
+    await evaluate("document.querySelector('[role=dialog]').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await until("!document.querySelector('[role=dialog]')");
+    await evaluate(`Array.from(document.querySelectorAll('.rowUser')).find(row=>row.textContent.includes(${JSON.stringify(employeeName)})).querySelector('img').click()`);
+    await until("document.body.innerText.includes('Меню сотрудника')");
+    await click('Удалить сотрудника');
+    await until(`!document.querySelector('[role=dialog]') && !Array.from(document.querySelectorAll('.rowUser')).some(row=>row.textContent.includes(${JSON.stringify(employeeName)}))`);
     await call('Page.navigate', { url: origin + '/teams' });
     await until("Boolean(document.querySelector('button.addTeam'))");
     await evaluate("document.querySelector('button.addTeam').click()");
@@ -82,10 +111,17 @@ try {
     await until("location.pathname==='/login' && document.body.innerText.includes('Все сессии завершены')");
     const replayStatus = await evaluate(`fetch('/api/auth/protected', { headers: { Authorization: ${JSON.stringify('Bearer ' + oldToken)} } }).then(response => response.status)`);
     assert.equal(replayStatus, 401);
+    assert.ok(requests.some((url) => url.endsWith('/api/auth/createUser')));
     assert.ok(requests.some((url) => url.endsWith('/api/auth/logout')));
     assert.ok(requests.some((url) => url.endsWith('/api/auth/login')));
     assert.ok(requests.some((url) => url.endsWith('/api/teams/create')));
     assert.ok(requests.every((url) => url.startsWith(origin + '/api/')), 'All API calls must use the frontend origin');
     assert.deepEqual(exceptions, []);
-    console.log(`PASS real browser: ${login}, UI login, verified session, team create/delete, logout and revoked JWT, same-origin API`);
+    console.log(`PASS real browser: ${login}, UI login, employee create/list/delete, verified session, team create/delete, logout and revoked JWT, same-origin API`);
+} catch (error) {
+    const state = await evaluate("({path:location.pathname,role:document.querySelector('[role=combobox]')?.textContent,inputs:Array.from(document.querySelectorAll('[role=dialog] input')).map(input=>({placeholder:input.placeholder,length:input.value.length,disabled:input.disabled})),messages:Array.from(document.querySelectorAll('[data-sonner-toast]')).map(toast=>toast.textContent)})").catch(() => null);
+    console.error('Browser state:', JSON.stringify(state));
+    console.error('Auth API statuses:', JSON.stringify(responseStatuses.filter(item => item.path.startsWith('/api/auth/'))));
+    console.error('Recent API statuses:', JSON.stringify(responseStatuses.slice(-5)));
+    throw error;
 } finally { socket.close(); }

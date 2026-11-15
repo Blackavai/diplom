@@ -30,6 +30,12 @@ const pendingLogouts = [];
 let holdSession = false;
 let pendingSessions = [];
 let holdLogin = false;
+let usersEnabled = false;
+let holdUsers = false;
+let usersStatus = 200;
+let createStatus = 201;
+const pendingUsers = [];
+let employees = [];
 let holdCreate = false;
 let pendingLogins = [];
 let pendingCreates = [];
@@ -58,12 +64,24 @@ async function respond(event, status, data) {
     await call('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: status, responseHeaders: headers,
         body: status === 204 ? '' : Buffer.from(JSON.stringify(data)).toString('base64') });
 }
+function createResponse(event) {
+    const body = JSON.parse(event.request.postData);
+    const user = { id: 1000 + employees.length, fname: body.fname, lname: body.lname,
+        tg_id: body.tg_id, post: body.post, role: body.role };
+    employees.push(user);
+    return { message: 'Пользователь успешно зарегистрирован', user };
+}
+async function finishCreate(event) {
+    if (createStatus === 201) return respond(event, 201, createResponse(event));
+    const message = createStatus === 409 ? 'Пользователь с таким id уже существует.' : 'Ошибка сервера';
+    return respond(event, createStatus, { message });
+}
 async function intercept(event) {
     const path = new URL(event.request.url).pathname;
     if (event.request.method === 'OPTIONS') return respond(event, 204, null);
     const body = event.request.postData ? JSON.parse(event.request.postData) : {};
     const password = body.password ?? body.pass ?? body.textNewPassword;
-    records.push({ path, method: event.request.method, usersId: body.usersId, hasBearer: /^Bearer /.test(event.request.headers.Authorization || event.request.headers.authorization || ''),
+    records.push({ path, method: event.request.method, usersId: body.usersId, role: body.role, hasBearer: /^Bearer /.test(event.request.headers.Authorization || event.request.headers.authorization || ''),
         passwordChars: typeof password === 'string' ? password.length : undefined });
     if (expectedPassword !== undefined && password !== undefined) assert.equal(password, expectedPassword);
     if (path === '/api/auth/protected') {
@@ -82,13 +100,25 @@ async function intercept(event) {
     }
     if (path === '/api/auth/createUser') {
         if (holdCreate) { pendingCreates.push(event); return; }
-        return respond(event, 201, { message: 'Пользователь успешно зарегистрирован' });
+        return finishCreate(event);
     }
     if (path === '/api/auth/recPass') return respond(event, 200, { recoverPassword: { questions: 'Synthetic question?' } });
     if (path === '/api/auth/recAns') return respond(event, 200, { recoveryToken: 'a'.repeat(64), expiresIn: 300 });
     if (path === '/api/auth/recPass/newPass') return respond(event, 200, { success: true });
     if (mode === 'task401' && path.endsWith('/tasks')) return respond(event, 401, { message: 'Недействительная сессия' });
     if (mode === 'management403' && path === '/api/users') return respond(event, 403, { message: 'Доступ запрещён' });
+    if (usersEnabled && path.startsWith('/api/auth/delUser/')) {
+        employees = employees.filter(user => user.id !== Number(path.split('/').at(-1)));
+        return respond(event, 201, { message: 'Пользователь успешно удалён' });
+    }
+    if (usersEnabled && path === '/api/users') {
+        if (holdUsers) { pendingUsers.push(event); return; }
+        if (usersStatus !== 200) return respond(event, usersStatus, { message: 'Ошибка сервера' });
+        return respond(event, 200, employees);
+    }
+    if (usersEnabled && /^\/api\/users\/\d+\/(team|vacation)$/.test(path)) {
+        return respond(event, 201, { user: 'Отсутствует' });
+    }
     if (teamsEnabled) {
         if (path === '/api/users') return respond(event, 200, syntheticUsers);
         if (path === '/api/teams/') return respond(event, 200, syntheticTeams);
@@ -152,6 +182,15 @@ const fill = (placeholder, value) => evaluate(`{
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});
     input.dispatchEvent(new Event('input',{bubbles:true}));
 }`);
+async function chooseUserRole(label) {
+    await evaluate("document.querySelector('[role=dialog] [role=combobox]').click()");
+    await until(() => evaluate("document.querySelectorAll('[role=option]').length > 0"));
+    const point = await evaluate(`{const option=Array.from(document.querySelectorAll('[role=option]')).find(item=>item.textContent.includes(${JSON.stringify(label)}));const rect=option.getBoundingClientRect();({x:rect.x+rect.width/2,y:rect.y+rect.height/2})}`);
+    await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+    await call('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...point });
+    await call('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...point });
+    await until(() => evaluate(`!document.querySelector('[role=option]') && document.querySelector('[role=combobox]').textContent.includes(${JSON.stringify(label)})`));
+}
 let passed = 0;
 function pass(name) { console.log(`PASS browser: ${name}`); passed++; }
 try {
@@ -282,19 +321,18 @@ try {
     await fill('Введите телеграм id сотрудника', 'synthetic-new-user');
     await fill('Введите пароль сотрудника', expectedPassword);
     await fill('Frontend, Backend, Дизайнер, Тестировщик и т.п.', 'Test');
-    await evaluate("document.querySelector('[role=combobox]').click()");
-    await until(() => evaluate("document.querySelectorAll('[role=option]').length > 0"));
-    await evaluate("Array.from(document.querySelectorAll('[role=option]')).find(option => option.textContent.includes('Работник')).dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerType:'mouse'}))");
+    await chooseUserRole('Работник');
     holdCreate = true;
     await evaluate("{ const button = Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Добавить пользователя'); button.click(); button.click(); }");
     await until(async () => pendingCreates.length > 0);
     assert.equal(pendingCreates.length, 1);
     assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Сохранение…').disabled"), true);
     holdCreate = false;
-    for (const event of pendingCreates) await respond(event, 201, { message: 'Пользователь успешно зарегистрирован' });
+    for (const event of pendingCreates) await finishCreate(event);
     pendingCreates = [];
     await until(() => hasText('Добавить пользователя'));
     assert.equal(records.filter((entry) => entry.path === '/api/auth/createUser').at(-1).passwordChars, expectedPassword.length);
+    assert.equal(records.filter(entry => entry.path === '/api/auth/createUser').at(-1).role, 2);
     pass('manager form keeps the long password and blocks concurrent creation requests');
     expectedPassword = undefined;
     teamsEnabled = true;
@@ -639,9 +677,134 @@ try {
     assert.equal(await hasToken(), false);
     assert.equal(records.filter(item => item.path === '/api/auth/logout').length, logoutCount);
     pass('automatic 401 cleanup does not recursively call server logout');
+    // Сотрудники: проверяем реальные эффекты React и гонку загрузки списка.
+    mode = 'manager';
+    usersEnabled = true;
+    employees = [];
+    holdUsers = true;
+    await cookie('token', 'synthetic-users-session');
+    await navigate('/users');
+    await until(() => evaluate("Boolean(document.querySelector('button.addUser'))"));
+    await until(async () => pendingUsers.length > 0);
+    const oldUserLoads = pendingUsers.splice(0);
+    await evaluate("document.querySelector('button.addUser').click()");
+    await until(() => hasText('Добавить пользователя'));
+    const countCreates = () => records.filter(item => item.path === '/api/auth/createUser').length;
+    const inputValue = (placeholder) => evaluate(`document.querySelector('input[placeholder='+${JSON.stringify(JSON.stringify(placeholder))}+']').value`);
+    const fillEmployee = async (name, account) => {
+        await fill('Введите имя сотрудника', name);
+        await fill('Введите фамилию сотрудника', 'Test');
+        await fill('Введите телеграм id сотрудника', account);
+        await fill('Введите пароль сотрудника', 'synthetic-create-password');
+        await fill('Frontend, Backend, Дизайнер, Тестировщик и т.п.', 'Test');
+    };
+    const beforeInvalid = countCreates();
+    await fill('Введите пароль сотрудника', 'synthetic-create-password');
+    await clickButton('Добавить пользователя');
+    await until(() => hasText('Заполните имя, фамилию и должность'));
+    await fillEmployee('Employee One', 'synthetic-employee-one');
+    await clickButton('Добавить пользователя');
+    await until(() => hasText('Выберите роль: менеджер или работник'));
+    await chooseUserRole('Работник');
+    await fill('Введите имя сотрудника', '😀'.repeat(256));
+    await clickButton('Добавить пользователя');
+    await evaluate('new Promise(resolve => setTimeout(resolve, 100))');
+    assert.equal(countCreates(), beforeInvalid);
+    pass('employee form rejects missing fields, missing role and overlong Unicode without POST');
+
+    await fill('Введите имя сотрудника', 'Employee One');
+    holdCreate = true;
+    createStatus = 409;
+    await evaluate("{const button=Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Добавить пользователя');button.click();button.click();}");
+    await until(async () => pendingCreates.length === 1);
+    assert.equal(countCreates(), beforeInvalid + 1);
+    assert.equal(await evaluate("Array.from(document.querySelectorAll('[role=dialog] input')).every(input=>input.disabled)"), true);
+    assert.equal(await evaluate("document.querySelector('[role=dialog] [role=combobox]').disabled"), true);
+    pass('employee save blocks all inputs and duplicate submission');
+    holdCreate = false;
+    await finishCreate(pendingCreates.shift());
+    await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Добавить пользователя'&&!button.disabled)"));
+    assert.equal(await inputValue('Введите имя сотрудника'), 'Employee One');
+    assert.equal(await inputValue('Введите пароль сотрудника'), 'synthetic-create-password');
+    assert.equal(await evaluate("document.querySelector('[role=combobox]').textContent.includes('Работник')"), true);
+    await until(() => hasText('Пользователь с таким id уже существует.'));
+    pass('409 preserves the employee draft, password and selected role');
+
+    createStatus = 201;
+    await clickButton('Добавить пользователя');
+    await until(() => evaluate("document.querySelectorAll('.rowUser').length===1"));
+    await until(async () => pendingUsers.length > 0);
+    for (const event of oldUserLoads) await respond(event, 200, []);
+    await evaluate('new Promise(resolve => setTimeout(resolve, 100))');
+    assert.equal(await evaluate("document.querySelectorAll('.rowUser').length"), 1);
+    assert.equal(await inputValue('Введите имя сотрудника'), '');
+    assert.equal(await inputValue('Введите пароль сотрудника'), '');
+    assert.equal(await evaluate("document.querySelector('[role=combobox]').textContent.includes('Работник или менеджер')"), true);
+    holdUsers = false;
+    for (const event of pendingUsers.splice(0)) await respond(event, 200, employees);
+    pass('created employee appears immediately; late old GET cannot remove it; fields and role reset');
+
+    await fillEmployee('Employee Two', 'synthetic-employee-two');
+    await chooseUserRole('Менеджер');
+    usersStatus = 500;
+    await clickButton('Добавить пользователя');
+    await until(() => evaluate("document.querySelectorAll('.rowUser').length===2"));
+    await until(() => hasText('Не удалось обновить список сотрудников'));
+    await closeDialog();
+    const beforeRetry = countCreates();
+    const beforeReload = records.filter(item=>item.path==='/api/users').length;
+    usersStatus = 200;
+    await clickButton('Повторить');
+    await until(async () => records.filter(item=>item.path==='/api/users').length > beforeReload);
+    await until(async () => !await hasText('Не удалось обновить список сотрудников'));
+    assert.equal(await evaluate("document.querySelectorAll('.rowUser').length"), 2);
+    assert.equal(countCreates(), beforeRetry);
+    pass('failed list refresh retains committed employee; retry reads without repeating creation');
+
+    await evaluate("document.querySelector('button.addUser').click()");
+    await until(() => hasText('Добавить пользователя'));
+    await fillEmployee('Employee Three', 'synthetic-employee-three');
+    await chooseUserRole('Работник');
+    createStatus = 500;
+    await clickButton('Добавить пользователя');
+    await until(async () => countCreates() === beforeRetry + 1);
+    await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Добавить пользователя'&&!button.disabled)"));
+    assert.equal(await inputValue('Введите имя сотрудника'), 'Employee Three');
+    assert.equal(await inputValue('Введите телеграм id сотрудника'), 'synthetic-employee-three');
+    assert.equal(await evaluate("document.querySelectorAll('.rowUser').length"), 2);
+    assert.equal(employees.length, 2);
+    await closeDialog();
+    pass('500 creation failure preserves draft and leaves the employee list unchanged');
+    createStatus = 201;
+    holdUsers = true;
+    await evaluate("document.querySelector('button.addUser').click()");
+    await until(() => hasText('Добавить пользователя'));
+    await fillEmployee('Employee Four', 'synthetic-employee-four');
+    await chooseUserRole('Работник');
+    await clickButton('Добавить пользователя');
+    await until(() => evaluate("document.querySelectorAll('.rowUser').length===3"));
+    await until(async () => pendingUsers.length > 0);
+    const staleEmployees = [...employees];
+    const oldRefresh = pendingUsers.splice(0);
+    await closeDialog();
+    await evaluate("Array.from(document.querySelectorAll('.rowUser')).find(row=>row.textContent.includes('Employee Four')).querySelector('img').click()");
+    await until(() => hasText('Меню сотрудника'));
+    await clickButton('Удалить сотрудника');
+    await until(() => evaluate("document.querySelectorAll('.rowUser').length===2 && !document.querySelector('[role=dialog]')"));
+    holdUsers = false;
+    for (const event of oldRefresh) await respond(event, 200, staleEmployees);
+    await evaluate('new Promise(resolve => setTimeout(resolve, 100))');
+    assert.equal(await evaluate("document.querySelectorAll('.rowUser').length"), 2);
+    assert.equal(await evaluate("Array.from(document.querySelectorAll('.rowUser')).some(row=>row.textContent.includes('Employee Four'))"), false);
+    pass('late post-creation list refresh cannot resurrect a deleted employee');
     assert.deepEqual(interceptionErrors, []);
     assert.deepEqual(exceptions, []);
     console.log(`Browser scenarios passed: ${passed}; API responses are synthetic, no working backend contacted`);
+} catch (error) {
+    const state = await evaluate("({path:location.pathname,role:document.querySelector('[role=combobox]')?.textContent,inputs:Array.from(document.querySelectorAll('[role=dialog] input')).map(input=>({placeholder:input.placeholder,length:input.value.length,disabled:input.disabled}))})").catch(() => null);
+    console.error('Browser state:', JSON.stringify(state));
+    console.error('Recent API paths:', records.slice(-5).map(record => record.method + ' ' + record.path).join(', '));
+    throw error;
 } finally {
     if (process.argv.includes('--close-browser')) {
         await new Promise((resolve) => {

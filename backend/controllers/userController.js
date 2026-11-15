@@ -1,4 +1,6 @@
 const UsersModel = require("../models/userModel");
+const { positiveId } = require('../middleware/authMiddleware');
+const { isValidUserText } = require('../utils/userValidation');
 
 const UsersController = {
     getAllUsers: async (req, res) => {
@@ -13,8 +15,12 @@ const UsersController = {
 
     updateUserInfo: async (req, res)=> {
         try{
-            const { id } = req.params;
-            const { fname, lname, post } = req.body;
+            const id = positiveId(req.params.id);
+            if (id === null) return res.status(400).json({ message: 'Некорректный идентификатор' });
+            const { fname, lname, post } = req.body || {};
+            if (!isValidUserText(fname) || !isValidUserText(lname) || !isValidUserText(post)) {
+                return res.status(400).json({ message: 'Имя, фамилия и должность должны быть непустыми строками до 255 символов' });
+            }
             const users = await UsersModel.updateUserInfo(id, fname, lname, post);
             if (!users) return res.status(404).json({ message: "Пользователь не найден" });
             const { id: userId, fname: firstName, lname: lastName, tg_id, post: position, role } = users;
@@ -22,7 +28,7 @@ const UsersController = {
                 id: userId, fname: firstName, lname: lastName, tg_id, post: position, role
             } });
         } catch (err){
-            console.error(err);
+            console.error('Ошибка изменения сотрудника');
             return res.status(500).json({ message: "Ошибка сервера" });
         }
     },

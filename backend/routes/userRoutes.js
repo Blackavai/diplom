@@ -54,6 +54,8 @@ router.get("/", requireManager, UserController.getAllUsers);
  *         required: true
  *         schema:
  *           type: integer
+ *           minimum: 1
+ *           maximum: 2147483647
  *         description: ID пользователя
  *     requestBody:
  *       required: true
@@ -64,12 +66,18 @@ router.get("/", requireManager, UserController.getAllUsers);
  *             properties:
  *               fname:
  *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 255
  *                 example: "Иван"
  *               lname:
  *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 255
  *                 example: "Иванов"
  *               post:
  *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 255
  *                 example: "Менеджер"
  *             required:
  *               - fname
@@ -99,6 +107,10 @@ router.get("/", requireManager, UserController.getAllUsers);
  *                     post:
  *                       type: string
  *                       example: "Новая должность"
+ *       400:
+ *         description: Некорректные id или непустые строки до 255 Unicode-символов
+ *       404:
+ *         description: Пользователь не найден
  *       500:
  *         description: Внутренняя ошибка сервера
  */

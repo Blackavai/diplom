@@ -22,7 +22,7 @@ const AuthModel = {
         return result.rowCount === 1;
     },
     createUser: async (fname, lname, tg_id, post, role, pass) => {
-        const query = 'INSERT INTO users (fname, lname, tg_id, role, post, password) VALUES ($1, $2, $3, $4, $5, $6)';
+        const query = 'INSERT INTO users (fname, lname, tg_id, role, post, password) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, fname, lname, tg_id, post, role';
         const values = [fname, lname, tg_id, role, post, pass];
         const res = await postgree.query(query, values);
         return res.rows[0];

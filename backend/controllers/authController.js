@@ -1,5 +1,6 @@
 const AuthModel = require("../models/authModel");
 const jwt = require("jsonwebtoken");
+const { isValidUserText, isValidUserAccount } = require('../utils/userValidation');
 const { recovery, isNonEmptyString } = require('../utils/passwordRecovery');
 const { hashPassword, verifyPassword, isValidPassword, legacyLoginAllowed } = require('../utils/passwords');
 const { loginAttempts } = require('../utils/loginAttempts');
@@ -34,13 +35,21 @@ const AuthController = {
         try {
             const { fname, lname, tg_id, post, role, pass } = req.body || {};
             if (!isValidPassword(pass)) return res.status(400).json({ message: 'Введите пароль' });
+            if (!isValidUserText(fname) || !isValidUserText(lname) || !isValidUserText(post)) {
+                return res.status(400).json({ message: 'Имя, фамилия и должность должны быть непустыми строками до 255 символов' });
+            }
+            if (!isValidUserAccount(tg_id)) return res.status(400).json({ message: 'Введите корректный Telegram ID длиной до 255' });
+            if (role !== 1 && role !== 2) return res.status(400).json({ message: 'Выберите роль: менеджер или работник' });
             const existingUser = await AuthModel.findUserByTGid(tg_id);
             if (existingUser) {
-                return res.status(400).json({ message: "Пользователь с таким id уже существует." });
+                return res.status(409).json({ message: "Пользователь с таким id уже существует." });
             }
             const hash = await hashPassword(pass);
             const newUser = await AuthModel.createUser(fname, lname, tg_id, post, role, hash);
-            return res.status(201).json({ message: "Пользователь успешно зарегистрирован", user: newUser });
+            const { id, fname: firstName, lname: lastName, tg_id: account, post: position, role: userRole } = newUser;
+            return res.status(201).json({ message: "Пользователь успешно зарегистрирован", user: {
+                id, fname: firstName, lname: lastName, tg_id: account, post: position, role: userRole
+            } });
         } catch (err) {
             return authFailure(res, err);
         }

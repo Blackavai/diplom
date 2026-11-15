@@ -217,6 +217,86 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *         description: Ошибка сервера
  */
 
+/**
+ * @openapi
+ * /api/auth/createUser:
+ *   post:
+ *     tags: [Authorization]
+ *     summary: Создать сотрудника (менеджер)
+ *     security:
+ *       - bearerAuth: []
+ *     description: Проверяет поля до SQL и возвращает только безопасные данные. Пароль сохраняется как scrypt без новых правил длины. Уникальность tg_id на уровне БД этим маршрутом не гарантируется при параллельных запросах.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [fname, lname, tg_id, post, role, pass]
+ *             properties:
+ *               fname:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 255
+ *               lname:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 255
+ *               post:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 255
+ *               tg_id:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 255
+ *                 description: Непустой идентификатор до 255 UTF-16 единиц для совместимости с действующим входом; значение не обрезается и не нормализуется.
+ *               role:
+ *                 type: integer
+ *                 enum: [1, 2]
+ *               pass:
+ *                 type: string
+ *                 writeOnly: true
+ *                 description: Непустой пароль; сохраняется целиком без обрезания и нормализации.
+ *     responses:
+ *       201:
+ *         description: Пользователь создан; user содержит только id, fname, lname, tg_id, post, role
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 user:
+ *                   type: object
+ *                   required: [id, fname, lname, tg_id, post, role]
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     fname:
+ *                       type: string
+ *                     lname:
+ *                       type: string
+ *                     tg_id:
+ *                       type: string
+ *                     post:
+ *                       type: string
+ *                     role:
+ *                       type: integer
+ *       400:
+ *         description: Некорректные поля, роль или пароль
+ *       401:
+ *         description: Требуется действующая сессия
+ *       403:
+ *         description: Доступно только менеджеру
+ *       409:
+ *         description: Пользователь с таким tg_id уже существует
+ *       503:
+ *         description: Очередь хеширования заполнена
+ *       500:
+ *         description: Безопасная ошибка сервера
+ */
 router.post("/createUser", authenticate, requireManager, AuthController.insertNewUser);
 router.delete("/delUser/:id", authenticate, requireManager, AuthController.deleteUser);
 /**
