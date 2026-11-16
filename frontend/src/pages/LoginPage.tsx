@@ -1,10 +1,10 @@
 import React, { useRef, useState } from 'react';
 import axios from 'axios';
 import { publicApi } from '@/lib/api';
-import { useAuth } from './AuthContext.tsx';
+import { useAuth } from './auth-context';
 import '../style/login.css';
 import { useNavigate } from 'react-router-dom';
-import { useNotification } from './Notification.tsx';
+import { useNotification } from './notification-context';
 
 const errorMessage = (error: unknown, fallback: string) => {
     if (axios.isAxiosError<{ message?: string }>(error) && typeof error.response?.data?.message === 'string') {

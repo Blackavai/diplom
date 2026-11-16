@@ -8,12 +8,14 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog.tsx";
 import pencil from "@/assets/editUser.png";
-import api, { apiErrorMessage } from '@/lib/api';
-import React, { useEffect, useRef, useState } from "react";
+import type { TaskSummary, VacationPeriod } from '@/lib/types';
+import { useAuth } from './auth-context';
+import api, { apiErrorMessage, apiResponseMessage } from '@/lib/api';
+import { useEffect, useRef, useState } from "react";
 import axios from 'axios';
 import {Button} from "@/components/ui/button.tsx";
 import {Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select.tsx";
-import { useNotification } from './Notification.tsx';
+import { useNotification } from './notification-context';
 import imgUsersNone from "@/assets/users_none.png";
 import { Label } from "@/components/ui/label"
 
@@ -38,93 +40,81 @@ function isValidUserField(value: string) {
     return Array.from(value).length <= 255;
 }
 
-export function DialogDemo({ user, onDelete }: { user: UserSummary; onDelete: (id: number) => Promise<void> }) {
-    const [CheckTeam, setCheckTeam] = useState([]);
-    const [CheckVac, setCheckVac] = useState([]);
-    const [CheckTask, setCheckTask] = useState([]);
-
+export function DialogDemo({ user, onDelete }: { user: UserSummary; onDelete: (id: number) => Promise<boolean> }) {
+    const [open, setOpen] = useState(false);
+    const [team, setTeam] = useState<string | null>(null);
+    const [vacation, setVacation] = useState<VacationPeriod | 'Отсутствует' | null>(null);
+    const [tasks, setTasks] = useState<TaskSummary[] | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [pending, setPending] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [revision, setRevision] = useState(0);
+    const busy = useRef(false);
+    const mounted = useRef(true);
+    const { sessionError, retrySession } = useAuth();
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
     useEffect(() => {
-        api
-            .get(`/users/${user.id}/team`)
-            .then((response) => {
-                setCheckTeam(response.data);
-            })
-            .catch((error) => {
-                console.log(apiErrorMessage(error));
-            });
-    }, [user.id]);
-
-    useEffect(() => {
-        api
-            .get(`/users/${user.id}/vacation`)
-            .then((response) => {
-                setCheckVac(response.data.user);
-            })
-            .catch((error) => {
-                console.log(apiErrorMessage(error));
-            });
-    }, [user.id]);
-
-    useEffect(() => {
-        api
-            .get(`/users/${user.id}/tasks`)
-            .then((response) => {
-                setCheckTask(response.data.user);
-            })
-            .catch((error) => {
-                console.log(apiErrorMessage(error));
-            });
-    }, [user.id]);
-
-
-
-    const handleDelete = () => {
-        onDelete(user.id); // Call the delete function passed from User component
-    };
-
-    return (
-        <Dialog>
-            <DialogTrigger asChild>
-                <img src={pencil} alt={"arrow right"} width={"60px"}
-                     className={"box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) pencilAnim "}/>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[40%] p-15">
-                <DialogHeader>
-                    <DialogTitle>Меню сотрудника</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <div className="grid-cols-1 items-center gap-4 hrTitle">
-                        <p>{user.fname} {user.lname}</p>
-                    </div>
-                    <div className="grid-cols-1 items-center gap-1 hrTitle">
-                        <p>Роль: {user.post}</p>
-                    </div>
-                    <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <p>ID: {user.tg_id}</p>
-                    </div>
-                    <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <p>Команда: {CheckTeam.user}</p>
-                    </div>
-                    <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <p>Отпуск: {CheckVac.start_holiday && CheckVac.end_holiday ? `${displayDate(CheckVac.start_holiday)} - ${displayDate(CheckVac.end_holiday)}` : "Отсутсвует"}</p>
-                    </div>
-                    <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <p>Задач стоит: {CheckTask.length}</p>
-                    </div>
-                </div>
-                <DialogFooter>
-                    <Button type="button" variant={"red"} className={'btnInteractive'} onClick={handleDelete}>
-                        Удалить сотрудника
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
+        if (!open) return;
+        let active = true;
+        setLoading(true); setError(null);
+        async function loadDetails() {
+            try {
+                const [teamResponse, vacationResponse, taskResponse] = await Promise.all([
+                    api.get<{ user: string }>(`/users/${user.id}/team`, { timeout: 15000 }),
+                    api.get<{ user: VacationPeriod | 'Отсутствует' }>(`/users/${user.id}/vacation`, { timeout: 15000 }),
+                    api.get<{ user: TaskSummary[] }>(`/users/${user.id}/tasks`, { timeout: 15000 })
+                ]);
+                if (!active) return;
+                setTeam(teamResponse.data.user); setVacation(vacationResponse.data.user); setTasks(taskResponse.data.user);
+            } catch (failure: unknown) {
+                if (active) setError('Не удалось загрузить данные сотрудника.');
+                console.error(apiErrorMessage(failure));
+            } finally { if (active) setLoading(false); }
+        }
+        loadDetails();
+        return () => { active = false; };
+    }, [open, user.id, revision]);
+    async function handleDelete() {
+        if (busy.current || loading) return;
+        busy.current = true; setPending(true);
+        try {
+            const deleted = await onDelete(user.id);
+            if (!mounted.current) return;
+            if (deleted) setOpen(false);
+            else setError('Не удалось подтвердить удаление. Проверьте сообщение и обновите список сотрудников.');
+        } finally { busy.current = false; if (mounted.current) setPending(false); }
+    }
+    const vacationText = vacation && typeof vacation === 'object'
+        ? `${displayDate(vacation.start_holiday)} - ${displayDate(vacation.end_holiday)}` : vacation || '—';
+    return <Dialog open={open} onOpenChange={(value) => { if (!busy.current) setOpen(value); }}>
+        <DialogTrigger asChild><img src={pencil} alt="arrow right" width="60px" className="box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) pencilAnim " /></DialogTrigger>
+        <DialogContent className="sm:max-w-[40%] p-15">
+            <DialogHeader><DialogTitle>Меню сотрудника</DialogTitle></DialogHeader>
+            <div className="grid gap-4 py-4">
+                <div className="grid-cols-1 items-center gap-4 hrTitle"><p>{user.fname} {user.lname}</p></div>
+                <div className="grid-cols-1 items-center gap-1 hrTitle"><p>Роль: {user.post}</p></div>
+                <div className="grid grid-cols-1 items-center gap-4 hrTitle"><p>ID: {user.tg_id}</p></div>
+                {loading && <p role="status">Загрузка данных сотрудника…</p>}
+                <div className="grid grid-cols-1 items-center gap-4 hrTitle"><p>Команда: {team || '—'}</p></div>
+                <div className="grid grid-cols-1 items-center gap-4 hrTitle"><p>Отпуск: {vacationText}</p></div>
+                <div className="grid grid-cols-1 items-center gap-4 hrTitle"><p>Задач стоит: {tasks ? tasks.length : '—'}</p></div>
+                {error && <div role="alert">{error} <button type="button" disabled={loading || pending} onClick={() => setRevision((value) => value + 1)}>Повторить</button></div>}
+            </div>
+            <DialogFooter>
+                {sessionError && <Button type="button" onClick={retrySession}>Повторить проверку сессии</Button>}
+                <Button type="button" variant="red" className="btnInteractive" disabled={loading || pending} onClick={handleDelete}>
+                    {pending ? 'Удаление…' : 'Удалить сотрудника'}
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>;
 }
 
 export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) => void }) {
     const [pending, setPending] = useState(false);
     const busy = useRef(false);
+    const active = useRef(true);
+    useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
     const [fname, setFname] = useState("");
     const [lname, setLname] = useState("");
     const [tg_id, setTgId] = useState("");
@@ -161,6 +151,7 @@ export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) =>
                 pass,
             }, { timeout: 15000 });
 
+            if (!active.current) return;
             onCreated(data.user);
             addNotification('success', 'Пользователь добавлен в систему');
 
@@ -172,13 +163,14 @@ export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) =>
             setRoleText("");
             setRoleValue(null);
         } catch (error) {
+            if (!active.current) return;
             console.error("Ошибка при сохранении данных пользователя:", apiErrorMessage(error));
             const message = axios.isAxiosError<{ message?: string }>(error) && typeof error.response?.data?.message === 'string'
                 ? error.response.data.message : 'Ошибка при сохранении данных пользователя';
             addNotification('error', message);
         } finally {
             busy.current = false;
-            setPending(false);
+            if (active.current) setPending(false);
         }
     };
 
@@ -298,11 +290,15 @@ function User() {
     const [refreshVersion, setRefreshVersion] = useState(0);
     const [listError, setListError] = useState<string | null>(null);
     const requestVersion = useRef(0);
+    const mounted = useRef(true);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
     useEffect(() => {
         let active = true;
         const version = ++requestVersion.current;
         setListError(null);
+        setLoading(true);
         async function loadUsers() {
             try {
                 const response = await api.get<UserSummary[]>('/users', { timeout: 15000 });
@@ -312,7 +308,7 @@ function User() {
                 if (!active || version !== requestVersion.current) return;
                 console.error('Ошибка загрузки сотрудников:', apiErrorMessage(error));
                 setListError('Не удалось обновить список сотрудников. Повторите попытку.');
-            }
+            } finally { if (active && version === requestVersion.current) setLoading(false); }
         }
         void loadUsers();
         return () => { active = false; };
@@ -330,18 +326,23 @@ function User() {
         refreshUsers();
     }
 
-    const deleteUser = async (userId: number) => {
+    const deleteUser = async (userId: number): Promise<boolean> => {
         try {
-            await api.delete(`/auth/delUser/${userId}`);
+            await api.delete(`/auth/delUser/${userId}`, { timeout: 15000 });
+            if (!mounted.current) return false;
             // Прежняя загрузка списка могла начаться до удаления этой записи.
             requestVersion.current++;
+            setLoading(false);
             // Update the user list after deletion
             setData((prevData) => prevData.filter(user => user.id !== userId));
             addNotification('success', 'Сотрудник удалён из системы');
+            return true;
 
         } catch (error) {
-            addNotification('error', axios.isAxiosError<{ message?: string }>(error) && error.response?.status === 409
-                ? error.response.data.message || 'Сотрудник связан с другими данными' : 'Ошибка удаления сотрудника');
+            if (!mounted.current) return false;
+            if (axios.isAxiosError(error) && !error.response) setListError('Результат удаления не подтверждён. Обновите список сотрудников.');
+            addNotification('error', apiResponseMessage(error, 'Не удалось подтвердить удаление сотрудника.'));
+            return false;
         }
     };
 
@@ -366,6 +367,7 @@ function User() {
                     </div>
                     <DialogAddUser onCreated={handleUserCreated} />
                 </div>
+                {loading && <p role="status">Загрузка сотрудников…</p>}
                 {listError && (
                     <div role="alert">
                         <p>{listError}</p>
@@ -373,7 +375,7 @@ function User() {
                     </div>
                 )}
                 <div className={'columnUser'}>
-                    {filteredUsers.length === 0 ? (
+                    {!loading && !listError && filteredUsers.length === 0 ? (
                         <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
                             <img src={imgUsersNone} alt="Описание изображения" width={'600'}/>
                         </div>

@@ -18,7 +18,7 @@ const plugin = {
     name: 'test-dependencies',
     setup(builder) {
         builder.onResolve({ filter: /^(axios|react|react\/jsx-runtime|react-router-dom)$/ }, (args) => ({ path: require.resolve(args.path), external: true }));
-        builder.onResolve({ filter: /^(js-cookie|sonner)$|AuthContext\.tsx$/ }, (args) => ({ path: args.path, namespace: 'test-mock' }));
+        builder.onResolve({ filter: /^(js-cookie|sonner)$|(?:AuthContext\.tsx|auth-context)$/ }, (args) => ({ path: args.path, namespace: 'test-mock' }));
         builder.onLoad({ filter: /.*/, namespace: 'test-mock' }, (args) => ({
             contents: args.path === 'js-cookie'
                 ? 'export default { get: (key) => globalThis.__accessCookies[key] };'

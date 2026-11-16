@@ -15,8 +15,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { isAxiosError } from 'axios';
 import api, { apiErrorMessage } from '@/lib/api';
-import { useNotification } from './Notification.tsx';
-import { useAuth } from './AuthContext.tsx';
+import { useNotification } from './notification-context';
+import { useAuth } from './auth-context';
 import { businessDate, displayDate } from '@/lib/dates';
 import { createRequestKey } from '@/lib/requestKey';
 

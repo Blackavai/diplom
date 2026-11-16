@@ -12,15 +12,15 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import api, { apiErrorMessage } from '@/lib/api';
-import { useEffect, useRef, useState } from "react";
+import api, { apiErrorMessage, apiResponseMessage } from '@/lib/api';
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover.tsx";
 import {CheckIcon} from "lucide-react";
 import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from "@/components/ui/command.tsx";
-import { useNotification } from './Notification.tsx';
+import { useNotification } from './notification-context';
 import imgTeamNone from '@/assets/team_none.png';
-import { useAuth } from './AuthContext.tsx';
+import { useAuth } from './auth-context';
 import { createRequestKey } from '@/lib/requestKey';
 
 type TeamUser = { id: number; fname: string; lname: string; post?: string };
@@ -36,18 +36,25 @@ export function SelectUser({ selectedUsers, setSelectedUsers, excludedUsers = []
     const [users, setUsers] = useState<TeamUser[]>([]);
     const [error, setError] = useState(false);
     const [open, setOpen] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [revision, setRevision] = useState(0);
 
     useEffect(() => {
-        api
-            .get("/users")
-            .then((response) => {
-                setUsers(response.data);
-            })
-            .catch((error) => {
-                console.log(apiErrorMessage(error));
-                setError(true);
-            });
-    }, []);
+        let active = true;
+        setLoading(true); setError(false);
+        async function loadUsers() {
+            try {
+                const { data } = await api.get<TeamUser[]>('/users', { timeout: 15000 });
+                if (!Array.isArray(data)) throw new Error('Некорректный список сотрудников');
+                if (active) setUsers(data);
+            } catch (failure: unknown) {
+                if (active) setError(true);
+                console.error(apiErrorMessage(failure));
+            } finally { if (active) setLoading(false); }
+        }
+        void loadUsers();
+        return () => { active = false; };
+    }, [revision]);
 
     const handleSelectUser = (user: TeamUser) => {
         if (disabled || excludedUsers.some((member) => member.id === user.id)) return;
@@ -66,7 +73,7 @@ export function SelectUser({ selectedUsers, setSelectedUsers, excludedUsers = []
                 <Button
                     variant="outline"
                     role="combobox"
-                    disabled={disabled}
+                    disabled={disabled || loading}
                     aria-expanded={open}
                     className="flex w-30"
                 >
@@ -76,9 +83,11 @@ export function SelectUser({ selectedUsers, setSelectedUsers, excludedUsers = []
             </PopoverTrigger>
             <PopoverContent className='p-0' side={"left"}>
                 <Command>
-                    <CommandInput placeholder="Начните вводить ФИО" />
+                    <CommandInput disabled={disabled || loading} placeholder="Начните вводить ФИО" />
                     <CommandList>
-                        <CommandEmpty>{error ? "Не удалось загрузить пользователей. Откройте страницу повторно" : "Пользователь не найден"}</CommandEmpty>
+                        {loading && <p role="status">Загрузка сотрудников…</p>}
+                        {error && <div role="alert">Не удалось загрузить сотрудников. <button type="button" disabled={disabled || loading} onClick={() => setRevision((current) => current + 1)}>Повторить</button></div>}
+                        <CommandEmpty>{error ? "Не удалось загрузить пользователей" : "Пользователь не найден"}</CommandEmpty>
                         <CommandGroup>
                             {users.filter((user) => !excludedUsers.some((member) => member.id === user.id)).map((user) => (
                                 <CommandItem
@@ -118,6 +127,8 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
     const [selectNewUser, setSelectNewUser] = useState<TeamUser[]>([]);
     const [saving, setSaving] = useState(false);
     const busy = useRef(false);
+    const mounted = useRef(true);
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
     const [loading, setLoading] = useState(false);
     const [membersError, setMembersError] = useState(false);
     const [revision, setRevision] = useState(0);
@@ -164,14 +175,16 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
         setSaving(true);
         try {
             await api.post(`/teams/delUserTeam/${team.id}/${id_user}`, {}, { timeout: 15000 });
+            if (!mounted.current) return;
             setDataTeam((previous) => previous.filter((member) => member.id !== id_user));
             addNotification('success', 'Участник удалён из команды');
         } catch (error) {
+            if (!mounted.current) return;
             console.error(apiErrorMessage(error));
             addNotification('error', 'Ошибка при удалении участника');
         } finally {
             busy.current = false;
-            setSaving(false);
+            if (mounted.current) setSaving(false);
         }
     };
 
@@ -180,22 +193,24 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
         busy.current = true;
         setSaving(true);
         try {
-            const response = await api.put(`/teams/edit/${team.id}`, {
+            const response = await api.put<{ edit: Team }>(`/teams/edit/${team.id}`, {
                 newNameTeam: teamName,
                 descriptionTeam: teamDescription,
                 usersId: selectNewUser.map((user) => user.id),
             }, { timeout: 15000 });
+            if (!mounted.current) return;
             setSelectNewUser([]);
             updateTeamData(response.data.edit);
             setRevision((value) => value + 1);
             refreshTeams();
             addNotification('success', 'Данные команды обновлены');
         } catch (error) {
+            if (!mounted.current) return;
             console.error(apiErrorMessage(error));
             addNotification('error', 'Ошибка при сохранении данных команды');
         } finally {
             busy.current = false;
-            setSaving(false);
+            if (mounted.current) setSaving(false);
         }
     };
 
@@ -204,7 +219,7 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
         busy.current = true;
         setSaving(true);
         try { await deleteTeam(team.id); }
-        finally { busy.current = false; setSaving(false); }
+        finally { busy.current = false; if (mounted.current) setSaving(false); }
     };
 
     return (
@@ -279,7 +294,7 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
 }
 
 
-export function DialogAddTeam({ refreshTeams }: { refreshTeams: () => void }) {
+export function DialogAddTeam({ onCreated }: { onCreated: (team: Team) => void }) {
     const { sessionError, retrySession } = useAuth();
     const [newUserTeam, setNewUserTeam] = useState<TeamUser[]>([]);
     const [teamName, setTeamName] = useState('');
@@ -289,6 +304,8 @@ export function DialogAddTeam({ refreshTeams }: { refreshTeams: () => void }) {
 
     const [saving, setSaving] = useState(false);
     const busy = useRef(false);
+    const mounted = useRef(true);
+    useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
     const submission = useRef<{ key: string; payload: string } | null>(null);
 
     const handleRemoveUser = (userId: number) => {
@@ -306,20 +323,23 @@ export function DialogAddTeam({ refreshTeams }: { refreshTeams: () => void }) {
             if (!submission.current || submission.current.payload !== payload) {
                 submission.current = { key: createRequestKey(), payload };
             }
-            await api.post('/teams/create', body, { timeout: 15000, headers: { 'Idempotency-Key': submission.current.key } });
+            const { data } = await api.post<{ task: { id: number } }>('/teams/create', body, { timeout: 15000, headers: { 'Idempotency-Key': submission.current.key } });
+            if (!mounted.current) return;
+            if (!Number.isInteger(data.task?.id) || data.task.id <= 0) throw new Error('Некорректный ответ создания команды');
             submission.current = null;
-            refreshTeams();
+            onCreated({ id: data.task.id, name_team: teamName, description_team: teamDescription });
             setOpen(false);
             setTeamName('');
             setTeamDescription('');
             setNewUserTeam([]);
             addNotification('success', 'Команда создана');
         } catch (error) {
+            if (!mounted.current) return;
             console.error(apiErrorMessage(error));
-            addNotification('error', 'Ошибка при сохранении данных команды');
+            addNotification('error', apiResponseMessage(error, 'Не удалось подтвердить создание команды. Повтор сохранит тот же ключ запроса.'));
         } finally {
             busy.current = false;
-            setSaving(false);
+            if (mounted.current) setSaving(false);
         }
     };
 
@@ -391,41 +411,53 @@ function Teams() {
     const [searchTerm, setSearchTerm] = useState("");
     const { addNotification } = useNotification();
 
-    useEffect(() => {
-        fetchTeams();
+    const [loading, setLoading] = useState(true);
+    const [listError, setListError] = useState<string | null>(null);
+    const active = useRef(true);
+    const requestVersion = useRef(0);
+    const fetchTeams = useCallback(async () => {
+        const version = ++requestVersion.current;
+        setLoading(true); setListError(null);
+        try {
+            const { data } = await api.get<Team[]>('/teams/', { timeout: 15000 });
+            if (!active.current || version !== requestVersion.current) return;
+            if (!Array.isArray(data)) throw new Error('Некорректный список команд');
+            setData(data);
+        } catch (failure: unknown) {
+            if (active.current && version === requestVersion.current) setListError('Не удалось обновить список команд.');
+            console.error(apiErrorMessage(failure));
+        } finally { if (active.current && version === requestVersion.current) setLoading(false); }
     }, []);
-
-    const fetchTeams = () => {
-        api
-            .get("/teams/")
-            .then((response) => {
-                setData(response.data);
-            })
-            .catch((error) => {
-                console.log(apiErrorMessage(error));
-            });
-    };
+    useEffect(() => {
+        active.current = true;
+        void fetchTeams();
+        return () => { active.current = false; };
+    }, [fetchTeams]);
 
     const deleteTeam = async (id_team: number) => {
-        await api
-            .delete(`/teams/delete/${id_team}`, { timeout: 15000 })
-            .then(() => {
-                setData((prevData) => prevData.filter(team => team.id !== id_team));
-                addNotification('success', 'Команда успешно удалена');
-            })
-            .catch((error) => {
-                console.error("Ошибка при удалении команды:", apiErrorMessage(error));
-                addNotification('error', 'Ошибка при удалении команды');
-            });
+        try {
+            await api.delete(`/teams/delete/${id_team}`, { timeout: 15000 });
+            if (!active.current) return;
+            requestVersion.current++;
+            setLoading(false);
+            setData((current) => current.filter((team) => team.id !== id_team));
+            addNotification('success', 'Команда успешно удалена');
+        } catch (failure: unknown) {
+            if (!active.current) return;
+            setListError('Удаление команды не подтверждено. Обновите список.');
+            addNotification('error', apiResponseMessage(failure, 'Ошибка при удалении команды'));
+        }
     };
-
     const updateTeamData = (updatedTeam: Team) => {
-        setData((prevData) =>
-            prevData.map(team =>
-                team.id === updatedTeam.id ? updatedTeam : team
-            )
-        );
+        requestVersion.current++;
+        setLoading(false);
+        setData((current) => current.map((team) => team.id === updatedTeam.id ? updatedTeam : team));
     };
+    function handleCreated(team: Team) {
+        requestVersion.current++;
+        setData((current) => [...current.filter((item) => item.id !== team.id), team]);
+        void fetchTeams();
+    }
 
     return (
         <div>
@@ -443,10 +475,12 @@ function Teams() {
                         <button type={'submit'} className={'buttonSearch '} />
                     </div>
 
-                    <DialogAddTeam refreshTeams={fetchTeams} />
+                    <DialogAddTeam onCreated={handleCreated} />
                 </div>
+                {loading && <p role="status">Загрузка команд…</p>}
+                {listError && <div role="alert">{listError} <button type="button" onClick={() => { void fetchTeams(); }}>Повторить</button></div>}
                 <div className={'columnTeam'}>
-                    {data.length === 0 ?
+                    {!loading && !listError && data.length === 0 ?
                         (
                             <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
                                 <img src={imgTeamNone} alt="Описание изображения" width={'500'}/>

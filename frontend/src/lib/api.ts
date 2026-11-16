@@ -53,4 +53,12 @@ api.interceptors.response.use((response) => response, (error: unknown) => {
 export const apiErrorMessage = (error: unknown) =>
     axios.isAxiosError(error) && error.response ? `HTTP ${error.response.status}` : 'Ошибка запроса или соединения';
 
+export function apiResponseMessage(error: unknown, fallback: string): string {
+    if (axios.isAxiosError<{ message?: unknown; error?: unknown }>(error)) {
+        const message = error.response?.data?.message || error.response?.data?.error;
+        if (typeof message === 'string') return message;
+    }
+    return fallback;
+}
+
 export default api;

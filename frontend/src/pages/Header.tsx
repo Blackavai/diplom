@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import '../style/header.css';
 import { NavLink } from 'react-router-dom';
-import { useAuth } from './AuthContext.tsx';
+import { useAuth } from './auth-context';
 
 function Header() {
     const { user, logout } = useAuth();

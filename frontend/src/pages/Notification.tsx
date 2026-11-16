@@ -1,24 +1,12 @@
-import React, { createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
 import { toast } from 'sonner';
+import { NotificationContext } from './notification-context';
+import type { NotificationType } from './notification-context';
 
-const NotificationContext = createContext();
-
-export const NotificationProvider = ({ children }) => {
-    const addNotification = (type, message) => {
-        if (type === 'success') {
-            toast.success(message);
-        } else if (type === 'error') {
-            toast.error(message);
-        }
+export const NotificationProvider = ({ children }: { children: ReactNode }) => {
+    const addNotification = (type: NotificationType, message: string) => {
+        if (type === 'success') toast.success(message);
+        else toast.error(message);
     };
-
-    return (
-        <NotificationContext.Provider value={{ addNotification }}>
-            {children}
-        </NotificationContext.Provider>
-    );
-};
-
-export const useNotification = () => {
-    return useContext(NotificationContext);
+    return <NotificationContext.Provider value={{ addNotification }}>{children}</NotificationContext.Provider>;
 };

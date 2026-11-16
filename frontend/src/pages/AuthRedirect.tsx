@@ -1,5 +1,5 @@
 import { Link, Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from './AuthContext.tsx';
+import { useAuth } from './auth-context';
 const AuthRedirect = ({ roles }: { roles?: number[] }) => {
     const { user, status, isCheckingSession, sessionError, logout, retrySession } = useAuth();
     if (status === 'anonymous') return <Navigate to="/login" replace />;

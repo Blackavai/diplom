@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Cookies from 'js-cookie';
 import axios from 'axios';
@@ -7,25 +7,10 @@ import { publicApi, onUnauthorized, getSessionGeneration, invalidateSession, set
 import type { SessionProof } from '@/lib/api';
 import { createRequestKey } from '@/lib/requestKey';
 
-interface AuthUser {
-    id: number;
-    fname: string;
-    lname: string;
-    tg_id: string;
-    post: string;
-    role: number;
-}
+import { AuthContext } from './auth-context';
+import type { AuthUser, SessionStatus } from './auth-context';
+
 interface SessionResponse extends SessionProof { user: AuthUser }
-type SessionStatus = 'checking' | 'authenticated' | 'anonymous' | 'error' | 'forbidden';
-interface AuthContextType {
-    user: AuthUser | null;
-    completeLogin: () => void;
-    status: SessionStatus;
-    isCheckingSession: boolean;
-    sessionError: string | null;
-    logout: () => Promise<void>;
-    retrySession: () => void;
-}
 
 const EVENT_KEY = 'dailysync.session-event';
 function locallySignedOut() {
@@ -41,7 +26,6 @@ function validSession(data: SessionResponse) {
         /^[a-f0-9]{32}$/.test(data.sessionId) && /^[a-f0-9]{64}$/.test(data.csrfToken);
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [status, setStatus] = useState<SessionStatus>(locallySignedOut() ? 'anonymous' : 'checking');
@@ -158,8 +142,3 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return <AuthContext.Provider value={{ user, completeLogin, status, isCheckingSession, sessionError, logout, retrySession }}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (!context) throw new Error('useAuth must be used within an AuthProvider');
-    return context;
-};
