@@ -17,6 +17,7 @@ import { isAxiosError } from 'axios';
 import api, { apiErrorMessage } from '@/lib/api';
 import { useNotification } from './Notification.tsx';
 import { useAuth } from './AuthContext.tsx';
+import { createRequestKey } from '@/lib/requestKey';
 
 interface TaskSummary {
     id: number;
@@ -41,6 +42,7 @@ export function DialogTask({ task, onReported, onRefresh }: DialogTaskProps) {
     const [resultUncertain, setResultUncertain] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const busy = useRef(false);
+    const submission = useRef<{ key: string; text: string; date: string } | null>(null);
     const active = useRef(true);
     const { addNotification } = useNotification();
 
@@ -66,11 +68,14 @@ export function DialogTask({ task, onReported, onRefresh }: DialogTaskProps) {
         setPending(true);
         setReportError(null);
         try {
+            if (!submission.current || submission.current.text !== reportContent) {
+                submission.current = { key: createRequestKey(), text: reportContent, date: new Date().toISOString() };
+            }
             await api.post('/reports/new', {
                 id_task: task.id,
-                text_report: reportContent,
-                end_date: new Date().toISOString()
-            }, { timeout: 15000 });
+                text_report: submission.current.text,
+                end_date: submission.current.date
+            }, { timeout: 15000, headers: { 'Idempotency-Key': submission.current.key } });
             if (!active.current) return;
             setReportContent("");
             addNotification('success', 'Отчёт успешно отправлен');

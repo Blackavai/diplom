@@ -34,33 +34,37 @@ async function bundle(entry, file) {
     await writeFile(path, output.outputFiles[0].contents);
     return require(path);
 }
-const { default: api, publicApi, onUnauthorized, apiErrorMessage, setVerifiedSessionToken } = await bundle('src/lib/api.ts', 'api.cjs');
+const { default: api, publicApi, onUnauthorized, apiErrorMessage, setVerifiedSession, invalidateSession } = await bundle('src/lib/api.ts', 'api.cjs');
 const { default: Guard } = await bundle('src/pages/AuthRedirect.tsx', 'guard.cjs');
 beforeEach(() => {
     globalThis.__accessCookies = {};
     globalThis.__accessToasts = [];
-    setVerifiedSessionToken(null);
+    invalidateSession();
 });
 const fail = (status) => async (config) => {
     throw new axios.AxiosError('Synthetic HTTP failure', 'ERR_BAD_RESPONSE', config, {}, { status, data: {}, headers: {}, config });
 };
 const success = async (config) => ({ status: 200, data: {}, headers: {}, config });
 
-test('protected requests send the current Bearer token to the existing API', async () => {
-    globalThis.__accessCookies.token = 'synthetic-one';
+const proof = { sessionId: 'a'.repeat(32), csrfToken: 'b'.repeat(64) };
+
+test('browser API uses cookies and a safe session ID without reading or sending a JWT', async () => {
     api.defaults.adapter = success;
+    setVerifiedSession(proof);
     const response = await api.get('/users');
-    assert.equal(response.config.headers.get('Authorization'), 'Bearer synthetic-one');
+    assert.equal(response.config.headers.has('Authorization'), false);
+    assert.equal(response.config.headers.get('X-Session-Id'), proof.sessionId);
+    assert.equal(response.config.headers.has('X-CSRF-Token'), false);
+    assert.equal(response.config.withCredentials, true);
     assert.equal(response.config.baseURL, '/api');
-    assert.equal(publicApi.defaults.baseURL, '/api');
-    globalThis.__accessCookies.token = 'synthetic-two';
-    assert.equal((await api.get('/users')).config.headers.get('Authorization'), 'Bearer synthetic-two');
 });
 
-test('public login and recovery do not send session tokens or trigger session errors', async () => {
-    globalThis.__accessCookies.token = 'synthetic-session';
+test('public login and recovery use the browser header and do not trigger session errors', async () => {
     publicApi.defaults.adapter = success;
-    assert.equal((await publicApi.post('/auth/login', {})).config.headers.has('Authorization'), false);
+    const response = await publicApi.post('/auth/login', {});
+    assert.equal(response.config.headers.get('X-Requested-With'), 'XMLHttpRequest');
+    assert.equal(response.config.headers.has('Authorization'), false);
+    assert.equal(response.config.withCredentials, true);
     let logouts = 0;
     const unsubscribe = onUnauthorized(() => logouts++);
     try {
@@ -73,8 +77,7 @@ test('public login and recovery do not send session tokens or trigger session er
     } finally { unsubscribe(); }
 });
 
-test('writes are blocked before verification and while a repeated check is pending or failed', async () => {
-    globalThis.__accessCookies.token = 'synthetic-session';
+test('writes and legacy deleting GET are blocked until session verification succeeds', async () => {
     let sent = 0;
     api.defaults.adapter = async (config) => { sent++; return success(config); };
     for (const method of ['post', 'put', 'patch', 'delete']) {
@@ -82,51 +85,41 @@ test('writes are blocked before verification and while a repeated check is pendi
     }
     await assert.rejects(api.get('/users/delete/3'), /проверки сессии/);
     assert.equal(sent, 0);
-    setVerifiedSessionToken('synthetic-session');
-    await api.post('/teams/create', {});
-    assert.equal(sent, 1);
-    setVerifiedSessionToken(null);
+    setVerifiedSession(proof);
+    for (const method of ['post', 'put', 'patch', 'delete']) {
+        const result = await api.request({method,url:'/teams/create',data:{}});
+        assert.equal(result.config.headers.get('X-CSRF-Token'),proof.csrfToken);
+        assert.equal(result.config.headers.get('X-Session-Id'),proof.sessionId);
+    }
+    assert.equal((await api.get('/users/delete/3')).config.headers.get('X-CSRF-Token'),proof.csrfToken);
+    assert.equal(sent,5);
+    invalidateSession();
     await assert.rejects(api.post('/teams/create', {}));
-    assert.equal(sent, 1);
-    setVerifiedSessionToken('synthetic-session');
-    await api.post('/teams/create', {});
-    assert.equal(sent, 2);
+    assert.equal(sent,5);
 });
 
-test('a changed cookie or explicitly different Bearer cannot write using an old verification', async () => {
-    globalThis.__accessCookies.token = 'synthetic-old';
-    setVerifiedSessionToken('synthetic-old');
-    let sent = 0;
-    api.defaults.adapter = async (config) => { sent++; return success(config); };
-    globalThis.__accessCookies.token = 'synthetic-new';
-    await assert.rejects(api.post('/teams/create', {}));
-    globalThis.__accessCookies.token = 'synthetic-old';
-    await assert.rejects(api.post('/teams/create', {}, { headers: { Authorization: 'Bearer synthetic-other' } }));
-    assert.equal(sent, 0);
+test('browser API cannot override cookie authentication with an arbitrary Bearer', async () => {
+    setVerifiedSession(proof);
+    let sent=0;
+    api.defaults.adapter=async(config)=>{sent++;return success(config);};
+    await assert.rejects(api.post('/teams/create', {}, {headers:{Authorization:'Bearer other'}}));
+    assert.equal(sent,0);
 });
 
-test('cookie expiry closes the local session without sending a pending form', async () => {
-    globalThis.__accessCookies.token = 'synthetic-session';
-    setVerifiedSessionToken('synthetic-session');
-    let sent = 0;
-    let logouts = 0;
-    api.defaults.adapter = async (config) => { sent++; return success(config); };
-    const unsubscribe = onUnauthorized(() => { logouts++; setVerifiedSessionToken(null); });
+test('an expired cookie is rejected by the server and closes only the current local session', async () => {
+    setVerifiedSession(proof);
+    api.defaults.adapter=fail(401);
+    let logouts=0;
+    const unsubscribe=onUnauthorized(()=>{logouts++;invalidateSession();});
     try {
-        delete globalThis.__accessCookies.token;
-        await assert.rejects(api.post('/teams/create', {}));
-        assert.equal(logouts, 1);
-        assert.equal(sent, 0);
-        // Cookie может истечь и после временного отказа фоновой проверки.
-        setVerifiedSessionToken(null);
-        await assert.rejects(api.post('/teams/create', {}));
-        assert.equal(logouts, 2);
-        assert.equal(sent, 0);
-    } finally { unsubscribe(); }
+        await assert.rejects(api.post('/teams/create',{}));
+        assert.equal(logouts,1);
+        await assert.rejects(api.post('/teams/create',{}),/проверки сессии/);
+        assert.equal(logouts,1);
+    } finally {unsubscribe();}
 });
 
 test('401 of current session notifies logout subscribers', async () => {
-    globalThis.__accessCookies.token = 'synthetic-session';
     api.defaults.adapter = fail(401);
     let logouts = 0;
     const unsubscribe = onUnauthorized(() => logouts++);
@@ -138,10 +131,11 @@ test('401 of current session notifies logout subscribers', async () => {
     assert.equal(logouts, 1);
 });
 
-test('late 401 of an old token does not log out the new session', async () => {
-    globalThis.__accessCookies.token = 'synthetic-old';
+test('late 401 of an old generation does not log out a new verified session', async () => {
+    setVerifiedSession(proof);
     api.defaults.adapter = async (config) => {
-        globalThis.__accessCookies.token = 'synthetic-new';
+        invalidateSession();
+        setVerifiedSession({...proof,sessionId:'c'.repeat(32)});
         return fail(401)(config);
     };
     let logouts = 0;
@@ -152,8 +146,7 @@ test('late 401 of an old token does not log out the new session', async () => {
     } finally { unsubscribe(); }
 });
 
-test('403 shows permission error and 500 keeps session without logging out', async () => {
-    globalThis.__accessCookies.token = 'synthetic-session';
+test('403 shows a request error and 500 keeps session without logging out', async () => {
     let logouts = 0;
     const unsubscribe = onUnauthorized(() => logouts++);
     try {
@@ -167,8 +160,8 @@ test('403 shows permission error and 500 keeps session without logging out', asy
     } finally { unsubscribe(); }
 });
 
-test('log sanitizer does not expose Authorization or response data', () => {
-    const error = new axios.AxiosError('private-token', 'ERR_BAD_RESPONSE', { headers: { Authorization: 'Bearer private-token' } }, {}, { status: 403, data: 'private-data' });
+test('log sanitizer does not expose headers or response data', () => {
+    const error = new axios.AxiosError('private-token', 'ERR_BAD_RESPONSE', { headers: { 'X-CSRF-Token': 'private-token' } }, {}, { status: 403, data: 'private-data' });
     assert.equal(apiErrorMessage(error), 'HTTP 403');
     assert.equal(apiErrorMessage(new Error('private-token')), 'Ошибка запроса или соединения');
 });

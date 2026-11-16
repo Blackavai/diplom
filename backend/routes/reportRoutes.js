@@ -75,6 +75,8 @@ router.get("/", requireManager, reportController.getAllReport);
  *     summary: Подтвердить отчёт
  *     description: Помечает отчёт как проверенный (устанавливает check_report = true)
  *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *       - in: path
  *         name: id
  *         required: true
@@ -89,6 +91,8 @@ router.get("/", requireManager, reportController.getAllReport);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Report'
+ *       400:
+ *         description: Некорректный положительный id
  *       404:
  *         description: Отчёт с указанным ID не найден
  *         content:
@@ -111,7 +115,14 @@ router.put("/accept/:id", requireManager, reportController.acceptReport);
  *   post:
  *     tags: [Reports]
  *     summary: Отправить отчёт по своей задаче
- *     description: Доступно обеим ролям. Автор определяется по Bearer JWT; body.id_user игнорируется. Проверка исполнителя, вставка отчёта и завершение задачи атомарны. Несколько отчётов по задаче пока допускаются.
+ *     description: Доступно обеим ролям. Автор определяется по проверенной сессии; body.id_user игнорируется. Проверка исполнителя, вставка отчёта и завершение задачи атомарны. Новый отчёт допускается только по незавершённой задаче. После повторного открытия менеджером возможен следующий отчёт; история сохраняется.
+ *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
+ *       - in: header
+ *         name: Idempotency-Key
+ *         description: UUID операции, обязателен для cookie. Повтор с теми же данными возвращает прежний успех; изменённые данные — 409. Для прежних Bearer-клиентов необязателен.
+ *         schema: { type: string, format: uuid }
  *     requestBody:
  *       required: true
  *       content:
@@ -144,6 +155,8 @@ router.put("/accept/:id", requireManager, reportController.acceptReport);
  *         description: Роль не разрешена
  *       404:
  *         description: Задача не найдена или принадлежит другому пользователю
+ *       409:
+ *         description: Задача уже завершена или ключ использован с другими данными
  *       500:
  *         description: Ошибка сервера; транзакция откатывается
  */

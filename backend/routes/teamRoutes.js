@@ -69,6 +69,13 @@ router.get("/", teamController.getAllTeam);
  *     tags: [Teams]
  *     summary: Создать новую команду
  *     description: Атомарно создаёт команду и необязательных участников usersId; повторяющиеся id пропускаются
+ *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
+ *       - in: header
+ *         name: Idempotency-Key
+ *         description: UUID операции, обязателен для cookie. Повтор возвращает прежний id команды, изменённые данные с тем же ключом — 409. Для прежних Bearer-клиентов необязателен.
+ *         schema: { type: string, format: uuid }
  *     requestBody:
  *       required: true
  *       content:
@@ -96,7 +103,7 @@ router.get("/", teamController.getAllTeam);
  *       400:
  *         description: Не указано название команды или описание команды
  *       409:
- *         description: Конфликт связанных данных; повторите после обновления
+ *         description: Ключ использован с другими данными или конфликт связанных записей
  *       500:
  *         description: Внутренняя ошибка сервера
  */
@@ -111,6 +118,8 @@ router.post("/create", teamController.createTeam);
  *     summary: Удалить команду
  *     description: В одной транзакции удаляет связи участников и команду. Самих пользователей, задачи и отчёты не удаляет
  *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *       - in: path
  *         name: id
  *         required: true
@@ -149,6 +158,8 @@ router.delete("/delete/:id", teamController.delTeam);
  *     summary: Редактировать команду
  *     description: Атомарно изменяет название/описание и добавляет необязательных участников usersId; существующие связи сохраняются
  *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *       - in: path
  *         name: id
  *         required: true
@@ -207,6 +218,8 @@ router.put("/edit/:id", teamController.editTeam);
  *     summary: Добавить пользователей в команду
  *     description: Атомарно добавляет пользователей; повторные id и существующее членство пропускаются. Пустой массив допустим; неверный пользователь отклоняет весь запрос
  *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *       - in: path
  *         name: id
  *         required: true

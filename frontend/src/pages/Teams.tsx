@@ -21,6 +21,7 @@ import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandL
 import { useNotification } from './Notification.tsx';
 import imgTeamNone from '@/assets/team_none.png';
 import { useAuth } from './AuthContext.tsx';
+import { createRequestKey } from '@/lib/requestKey';
 
 type TeamUser = { id: number; fname: string; lname: string; post?: string };
 type Team = { id: number; name_team: string; description_team: string | null };
@@ -288,6 +289,7 @@ export function DialogAddTeam({ refreshTeams }: { refreshTeams: () => void }) {
 
     const [saving, setSaving] = useState(false);
     const busy = useRef(false);
+    const submission = useRef<{ key: string; payload: string } | null>(null);
 
     const handleRemoveUser = (userId: number) => {
         setNewUserTeam((prev) => prev.filter((user) => user.id !== userId));
@@ -298,11 +300,14 @@ export function DialogAddTeam({ refreshTeams }: { refreshTeams: () => void }) {
         busy.current = true;
         setSaving(true);
         try {
-            await api.post('/teams/create', {
-                nameTeam: teamName,
-                descriptionTeam: teamDescription,
-                usersId: newUserTeam.map((user) => user.id),
-            }, { timeout: 15000 });
+            const body = { nameTeam: teamName, descriptionTeam: teamDescription,
+                usersId: newUserTeam.map((user) => user.id).sort((a, b) => a - b) };
+            const payload = JSON.stringify(body);
+            if (!submission.current || submission.current.payload !== payload) {
+                submission.current = { key: createRequestKey(), payload };
+            }
+            await api.post('/teams/create', body, { timeout: 15000, headers: { 'Idempotency-Key': submission.current.key } });
+            submission.current = null;
             refreshTeams();
             setOpen(false);
             setTeamName('');

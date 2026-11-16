@@ -19,21 +19,30 @@ const swaggerOptions = {
         info: {
             title: "OggettoDailly API",
             version: "1.1.0",
-            description: "Бизнес-API требует Bearer JWT. Менеджер (роль 1) управляет всеми командами, сотрудниками, задачами, отпусками и принимает отчёты. Работник (роль 2) читает только свои задачи, команду и отпуск. Обе роли отправляют отчёты только по своим задачам. Вход и восстановление пароля публичны."
+            description: "Бизнес-API принимает Bearer JWT или HttpOnly-cookie dailysync_session. Cookie-запросы изменения требуют X-Session-Id и X-CSRF-Token из /api/auth/protected; это относится и к старому GET удаления сотрудника. Менеджер (роль 1) управляет всеми командами, сотрудниками, задачами, отпусками и принимает отчёты. Работник (роль 2) читает только свои задачи, команду и отпуск. Обе роли отправляют отчёты только по своим задачам. Вход и восстановление пароля публичны."
         },
         servers: [
             { url: "/", description: "Текущий сервер (напрямую или через frontend proxy)" }
         ],
         components: {
+            parameters: {
+                SessionIdHeader: { in: 'header', name: 'X-Session-Id', required: false,
+                    description: 'Обязателен для изменения по cookie; sessionId из /api/auth/protected',
+                    schema: { type: 'string', pattern: '^[a-f0-9]{32}$' } },
+                CsrfHeader: { in: 'header', name: 'X-CSRF-Token', required: false,
+                    description: 'Обязателен для изменения по cookie; csrfToken из /api/auth/protected',
+                    schema: { type: 'string', pattern: '^[a-f0-9]{64}$' } }
+            },
             securitySchemes: {
                 bearerAuth: {
                     type: "http",
                     scheme: "bearer",
                     bearerFormat: "JWT"
-                }
+                },
+                cookieAuth: { type: "apiKey", in: "cookie", name: "dailysync_session" }
             }
         },
-        security: [{ bearerAuth: [] }]
+        security: [{ bearerAuth: [] }, { cookieAuth: [] }]
     },
     apis: ["./routes/*.js"]
 };

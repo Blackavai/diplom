@@ -39,7 +39,7 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
     const other = await user();
     async function request(method, path, actor, body, headers = {}) {
         const response = await fetch(base + path, {
-            method, headers: { 'Content-Type': 'application/json',
+            method, headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer',
                 ...(actor ? { Authorization: `Bearer ${actor.token}` } : {}), ...headers },
             ...(body === undefined ? {} : { body: JSON.stringify(body) })
         });
@@ -203,11 +203,11 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
         }
     });
 
-    await t.test('parallel own reports preserve existing multiple-report behavior and consistent completion', async () => {
+    await t.test('parallel own reports complete once and reject a second completion', async () => {
         const id = await task(worker);
         const results = await Promise.all([postReport(worker, id), postReport(worker, id)]);
-        assert.deepEqual(results.map((r) => r.status), [200, 200]);
-        assert.equal((await pool.query('SELECT count(*)::int AS n FROM report_list WHERE id_task=$1', [id])).rows[0].n, 2);
+        assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+        assert.equal((await pool.query('SELECT count(*)::int AS n FROM report_list WHERE id_task=$1', [id])).rows[0].n, 1);
         assert.equal((await pool.query('SELECT status FROM task_list WHERE id=$1', [id])).rows[0].status, true);
     });
 

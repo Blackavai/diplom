@@ -1,5 +1,8 @@
 const AuthModel = require("../models/authModel");
 const jwt = require("jsonwebtoken");
+const { randomBytes } = require('node:crypto');
+const { positiveId } = require('../middleware/authMiddleware');
+const { setSessionCookie, csrfToken, isBrowserLoginAllowed } = require('../utils/sessionCookies');
 const { isValidUserText, isValidUserAccount } = require('../utils/userValidation');
 const { recovery, isNonEmptyString } = require('../utils/passwordRecovery');
 const { hashPassword, verifyPassword, isValidPassword, legacyLoginAllowed } = require('../utils/passwords');
@@ -10,6 +13,9 @@ function authFailure(res, error) {
     if (error?.code === 'PASSWORD_HASH_BUSY') {
         res.set('Retry-After', '1');
         return res.status(503).json({ message: 'Сервер занят. Повторите позже.' });
+    }
+    if (error?.code === '23505' && error.constraint === 'users_tg_id_unique') {
+        return res.status(409).json({ message: 'Пользователь с таким id уже существует.' });
     }
     console.error('Ошибка операции с учётными данными');
     return res.status(500).json({ message: 'Ошибка сервера' });
@@ -57,13 +63,20 @@ const AuthController = {
 
     deleteUser: async (req, res) => {
         res.locals.errorOperation = 'Ошибка удаления сотрудника';
-        const { id } = req.params;
+        const id = positiveId(req.params.id);
+        if (id === null) return res.status(400).json({ message: 'Некорректный идентификатор' });
         const delUser = await AuthModel.delUser(id);
+        if (!delUser.rowCount) return res.status(404).json({ message: 'Пользователь не найден' });
         return res.status(201).json({ message: "Пользователь успешно удалён" });
     },
 
     loginUser: async (req, res) => {
         res.set('Cache-Control', 'no-store');
+        const bearerLogin = req.get('X-Auth-Mode') === 'bearer';
+        // Выдача Bearer предназначена для явных небраузерных API-клиентов.
+        if (bearerLogin ? Boolean(req.get('Origin') || req.get('Sec-Fetch-Site')) : !isBrowserLoginAllowed(req)) {
+            return res.status(403).json({ message: 'Не удалось подтвердить запрос входа' });
+        }
         try {
             const { tg_id, password } = req.body || {};
             const validAccount = isNonEmptyString(tg_id);
@@ -89,28 +102,8 @@ const AuthController = {
             // Используем версию, прочитанную вместе с проверяемым паролем.
             // Одновременный reset сделает такой JWT недействительным.
             if (!Number.isInteger(user.session_version) || user.session_version < 0) throw new Error('Invalid session version');
-            const token = jwt.sign({ id: user.id, sessionVersion: user.session_version }, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-            // Устанавливаем токен в куки
-            res.cookie('token', token, {
-                httpOnly: false, // Защищает куки от доступа через JavaScript
-                secure: false, // Используйте secure в продакшене
-                maxAge: 3600000 // Время жизни куки (1 час)
-            });
-
-            // Сохраняем данные пользователя в куки
-            res.cookie('userData', JSON.stringify({
-                id: user.id,
-                fname: user.fname,
-                lname: user.lname,
-                tg_id: user.tg_id,
-                post: user.post,
-                role: user.role
-            }), {
-                httpOnly: false, // Защита от доступа через JavaScript
-                secure: false, // Используйте secure в продакшене
-                maxAge: 3600000 // Время жизни куки (1 час)
-            });
+            const token = jwt.sign({ id: user.id, sessionVersion: user.session_version, jti: randomBytes(16).toString('hex') }, process.env.JWT_SECRET, { expiresIn: '1h' });
+            if (!bearerLogin) setSessionCookie(res, token);
 
             return res.status(200).json({ message: "Вы вошли в систему",
                 user: {
@@ -120,7 +113,7 @@ const AuthController = {
                     tg_id: user.tg_id,
                     post: user.post,
                     role: user.role,
-                    token: token
+                    ...(bearerLogin ? { token } : {})
                 } });
         } catch (err) {
             return authFailure(res, err);
@@ -129,7 +122,8 @@ const AuthController = {
     logout: async (req, res) => {
         try {
             await AuthModel.revokeSessions(req.user.id, req.user.session_version);
-            // Cookie удаляет frontend: поздний HTTP-ответ не должен стереть новый вход.
+            // Не посылаем очистку cookie: поздний ответ не должен стереть новый вход.
+            // Оставшаяся HttpOnly-cookie уже недействительна из-за версии сессии.
             return res.status(200).json({ message: 'Все сессии завершены', success: true });
         } catch (error) {
             return authFailure(res, error);
@@ -137,7 +131,8 @@ const AuthController = {
     },
     protected: async (req, res) => {
         const { id, fname, lname, tg_id, post, role } = req.user;
-        return res.json({ message: 'Доступ разрешен', user: { id, fname, lname, tg_id, post, role } });
+        return res.json({ message: 'Доступ разрешен', user: { id, fname, lname, tg_id, post, role },
+            ...(req.authMode === 'cookie' ? { sessionId: req.sessionId, csrfToken: csrfToken(req.authToken) } : {}) });
     },
 
     recPass: async (req, res) => {

@@ -54,3 +54,12 @@ CREATE TABLE vacation (
     start_holiday date NOT NULL,
     end_holiday date NOT NULL
 );
+
+CREATE TABLE request_idempotency (
+    user_id integer NOT NULL,
+    operation varchar(32) NOT NULL,
+    request_key varchar(36) NOT NULL,
+    request_hash varchar(64) NOT NULL,
+    result jsonb,
+    PRIMARY KEY (user_id, operation, request_key)
+);

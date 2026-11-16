@@ -35,7 +35,7 @@ test('employee creation and update on synthetic PostgreSQL', { skip: process.env
         post: 'Test', role: 2, pass: 'synthetic-password' });
     async function post(path, body, bearer = managerToken) {
         const response = await fetch(base + path, { method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
+            headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
             ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
         const raw = await response.text();
         let data;

@@ -39,9 +39,9 @@ async function respond(event, status, body) {
 async function intercept(event) {
     const path = new URL(event.request.url).pathname;
     const body = event.request.postData ? JSON.parse(event.request.postData) : undefined;
-    records.push({ path, method: event.request.method, body, bearer: event.request.headers.Authorization || event.request.headers.authorization });
+    records.push({ path, method: event.request.method, body, bearer: event.request.headers.Authorization || event.request.headers.authorization, sessionId:event.request.headers['X-Session-Id'] || event.request.headers['x-session-id'], key:event.request.headers['Idempotency-Key'] || event.request.headers['idempotency-key'] });
     if (path === '/api/auth/protected') {
-        return respond(event, 200, { user: { id: userId, role: 2, fname: 'Reports', lname: 'Test', tg_id: 'synthetic-reports', post: 'Test' } });
+        return respond(event, 200, {sessionId:String(userId).repeat(32),csrfToken:'b'.repeat(64), user: { id: userId, role: 2, fname: 'Reports', lname: 'Test', tg_id: 'synthetic-reports', post: 'Test' } });
     }
     if (path === '/api/users/' + userId + '/tasks') {
         if (holdLists) { pendingLists.push(event); return; }
@@ -110,7 +110,9 @@ try {
     await call('Network.setBlockedURLs', { urls: ['https://*'] });
     await call('Fetch.enable', { patterns: [{ urlPattern: origin + '/api/*', requestStage: 'Request' }] });
     await call('Network.clearBrowserCookies');
-    await call('Network.setCookie', { name: 'token', value: 'synthetic-reports-session', url: origin, path: '/' });
+    await call('Network.setCookie', { name: 'dailysync_session', value: 'synthetic-reports-session', url: origin, path: '/api', httpOnly:true, sameSite:'Lax' });
+    await call('Page.navigate',{url:origin+'/login'});
+    await evaluate("localStorage.removeItem('dailysync.session-event')");
     holdLists = true;
     await navigate();
     await until(() => pendingLists.length > 0);
@@ -126,7 +128,7 @@ try {
     await click('Повторить');
     await until(async () => (await countRows()) === 2);
     assert.equal(await hasText('Не удалось обновить список задач'), false);
-    pass('list retry loads tasks with the verified user Bearer');
+    pass('list retry loads tasks with the verified cookie session');
 
     await openTask(77);
     const beforeInvalid = countPosts();
@@ -149,7 +151,8 @@ try {
     assert.equal(sent.body.id_task, 77);
     assert.equal(sent.body.id_user, undefined);
     assert.match(sent.body.end_date, /^\d{4}-\d{2}-\d{2}T/);
-    assert.match(sent.bearer, /^Bearer /);
+    assert.equal(sent.bearer,undefined);
+    assert.match(sent.key,/^[a-f0-9-]{36}$/);
     pass('double click sends one request and locks report editing');
 
     const beforeFailureGets = countGets();
@@ -158,6 +161,9 @@ try {
             await click('Отправить отчёт');
             await until(() => pendingReports.length === 1);
         }
+        const repeated=records.filter(record=>record.path==='/api/reports/new').at(-1);
+        assert.equal(repeated.key,sent.key);
+        assert.deepEqual(repeated.body,sent.body);
         await completeReport(status);
         await until(() => hasText('Synthetic report failure'));
         assert.equal(await inputValue(), '  Synthetic preserved report  ');
@@ -254,7 +260,7 @@ try {
     const oldReport = pendingReports.shift();
     userId = 3;
     rows = [task(83)];
-    await call('Network.setCookie', { name: 'token', value: 'synthetic-reports-next-user', url: origin, path: '/' });
+    await call('Network.setCookie', { name: 'dailysync_session', value: 'synthetic-reports-next-user', url: origin, path: '/api', httpOnly:true, sameSite:'Lax' });
     await evaluate('window.dispatchEvent(new Event("focus"))');
     await until(() => hasText('Synthetic report task 83'));
     assert.equal(await evaluate('Boolean(document.querySelector("[role=dialog]"))'), false);
@@ -272,7 +278,7 @@ try {
     userId = 4;
     rows = [task(84)];
     holdLists = false;
-    await call('Network.setCookie', { name: 'token', value: 'synthetic-reports-fourth-user', url: origin, path: '/' });
+    await call('Network.setCookie', { name: 'dailysync_session', value: 'synthetic-reports-fourth-user', url: origin, path: '/api', httpOnly:true, sameSite:'Lax' });
     await evaluate('window.dispatchEvent(new Event("focus"))');
     await until(() => hasText('Synthetic report task 84'));
     for (const event of previousUserLists) await respond(event, 200, { user: [task(83)] });
@@ -281,7 +287,7 @@ try {
     assert.equal(await hasText('Synthetic report task 83'), false);
     pass('late task list response cannot mix data between verified users');
 
-    assert.ok(records.filter(record => record.path.endsWith('/tasks')).every(record => /^Bearer /.test(record.bearer)));
+    assert.ok(records.filter(record => record.path.endsWith('/tasks')).every(record => !record.bearer && /^[0-9]{32}$/.test(record.sessionId)));
     assert.deepEqual(errors, []);
     assert.deepEqual(exceptions, []);
     console.log('Browser report scenarios passed: ' + passed + '; synthetic API only');

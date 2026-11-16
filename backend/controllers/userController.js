@@ -1,4 +1,6 @@
 const UsersModel = require("../models/userModel");
+const AuthModel = require('../models/authModel');
+const { isValidDateInput } = require('../utils/dateValidation');
 const { positiveId } = require('../middleware/authMiddleware');
 const { isValidUserText } = require('../utils/userValidation');
 
@@ -27,16 +29,31 @@ const UsersController = {
 
     deleteUser: async (req, res)=> {
         res.locals.errorOperation = 'Ошибка удаления сотрудника';
-        const { id } = req.params;
+        const id = positiveId(req.params.id);
+        if (id === null) return res.status(400).json({ message: 'Некорректный идентификатор' });
         const delUser = await UsersModel.deleteUser(id);
+        if (!delUser) return res.status(404).json({ message: 'Пользователь не найден' });
         return res.status(201).json({ message: "Пользователь успешно удалён", user: delUser });
     },
 
     vacationUser: async (req, res)=> {
         res.locals.errorOperation = 'Ошибка создания отпуска';
-        const { id } = req.params;
-        const { startHoliday, endHoliday } = req.body;
-        const vacUser = await UsersModel.vacUsers(id, startHoliday, endHoliday);
+        const id = positiveId(req.params.id);
+        const { startHoliday, endHoliday } = req.body || {};
+        if (id === null || !isValidDateInput(startHoliday) || !isValidDateInput(endHoliday)) {
+            return res.status(400).json({ message: 'Некорректные данные отпуска' });
+        }
+        if (!await AuthModel.findUserById(id)) return res.status(404).json({ message: 'Пользователь не найден' });
+        let vacUser;
+        try {
+            vacUser = await UsersModel.vacUsers(id, startHoliday, endHoliday);
+        } catch (error) {
+            if (error.code === '23503' && !await AuthModel.findUserById(id)) {
+                return res.status(404).json({ message: 'Пользователь не найден' });
+            }
+            throw error;
+        }
+        if (!vacUser) throw new Error('Vacation insert returned no row');
         return res.status(201).json({ message: "Отпуск создан", user: vacUser });
     },
 

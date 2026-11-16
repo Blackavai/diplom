@@ -106,6 +106,9 @@ router.get("/", TaskController.getAllTasks);
  *     tags: [Tasks]
  *     summary: Создать новую задачу
  *     description: Только менеджер. Проверка текущего отпуска сохранена; статус новой задачи всегда false. Дополнительные поля игнорируются.
+ *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *     requestBody:
  *       required: true
  *       content:
@@ -165,6 +168,8 @@ router.post("/new", TaskController.addNewTask);
  *     summary: Обновить задачу
  *     description: Полное обновление content, конечной даты и status. Основное имя даты end_date; прежнее date сохраняется как совместимый alias. Если переданы оба поля, они должны быть валидными и иметь одинаковую календарную часть. Исполнитель и start_date не меняются; дополнительные поля игнорируются.
  *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *       - in: path
  *         name: id
  *         required: true
@@ -231,6 +236,8 @@ router.put("/update/:id", TaskController.updateTaskContent);
  *     summary: Удалить задачу
  *     description: Отсутствующая задача получает 404. Прежний QueryResult в успешном ответе и действующие ограничения удаления сохранены; история и каскады этим этапом не менялись.
  *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *       - in: path
  *         name: id
  *         required: true

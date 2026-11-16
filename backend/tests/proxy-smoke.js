@@ -32,7 +32,7 @@ async function main() {
         for (const origin of ['http://proxy-nginx', 'http://proxy-vite:5173']) {
             const label = new URL(origin).hostname;
             const request = async (path, method = 'GET', body, token) => fetch(origin + path, {
-                method, headers: { Host: 'localhost', 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                method, headers: { Host: 'localhost', 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                 ...(body === undefined ? {} : { body: JSON.stringify(body) })
             });
             const index = await (await request('/')).text();
@@ -44,7 +44,7 @@ async function main() {
             assert.match(unauthorized.headers.get('content-type'), /json/);
             const signed = await request('/api/auth/login', 'POST', { tg_id: login, password });
             assert.equal(signed.status, 200);
-            assert.match(signed.headers.get('set-cookie'), /token=/);
+            assert.equal(signed.headers.get('set-cookie'), null);
             const token = (await signed.json()).user.token;
             const session = await request('/api/auth/protected', 'GET', undefined, token);
             assert.equal((await session.json()).user.id, actor.id);
@@ -102,7 +102,7 @@ async function main() {
                 ['synthetic-private-proxy', { 'Content-Encoding': 'gzip' }, 400, 'Некорректный запрос']
             ]) {
                 const technical = await fetch(origin + '/api/auth/login', { method: 'POST', body,
-                    headers: { Host: 'localhost', 'Content-Type': 'application/json', Authorization: 'Bearer synthetic-private-proxy', ...extraHeaders } });
+                    headers: { Host: 'localhost', 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer', Authorization: 'Bearer synthetic-private-proxy', ...extraHeaders } });
                 assert.equal(technical.status, status);
                 assert.match(technical.headers.get('content-type'), /application\/json/);
                 assert.equal(technical.headers.get('cache-control'), 'no-store');
@@ -124,7 +124,7 @@ async function main() {
         // Both proxies share the existing per-account limiter; forged XFF cannot reset it.
         for (let index = 0; index < 12; index++) {
             const response = await fetch('http://proxy-nginx/api/auth/login', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `192.0.2.${index + 1}` },
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer', 'X-Forwarded-For': `192.0.2.${index + 1}` },
                 body: JSON.stringify({ tg_id: login, password: 'wrong-synthetic' })
             });
             if (index >= 10) {

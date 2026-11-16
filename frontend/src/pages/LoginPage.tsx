@@ -14,7 +14,7 @@ const errorMessage = (error: unknown, fallback: string) => {
 };
 
 const LoginPage: React.FC = () => {
-    const { setToken } = useAuth();
+    const { completeLogin } = useAuth();
     const [tg_id, setTgId] = useState('');
     const [password, setPassword] = useState('');
     const [isRecoveryMode, setIsRecoveryMode] = useState(false);
@@ -40,13 +40,7 @@ const LoginPage: React.FC = () => {
         setLoginPending(true);
         try {
             const response = await publicApi.post('/auth/login', { tg_id, password }, { withCredentials: true, timeout: 15000 });
-            const token = response.data.user.token;
-
-            if (!token) {
-                throw new Error("Токен не получен");
-            }
-
-            setToken(token);
+            completeLogin();
             addNotification('success', 'Вы вошли в систему');
             if(response.data.user.role == 1) {
                 navigate('/users');

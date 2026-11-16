@@ -1,58 +1,55 @@
 import axios from 'axios';
-import Cookies from 'js-cookie';
 import { toast } from 'sonner';
 
-// Vite and Nginx proxy this path to the backend in their respective environments.
+export interface SessionProof {
+    sessionId: string;
+    csrfToken: string;
+}
+
 const baseURL = '/api';
-const api = axios.create({ baseURL });
-export const publicApi = axios.create({ baseURL });
+const options = { baseURL, withCredentials: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } };
+const api = axios.create(options);
+export const publicApi = axios.create(options);
 const unauthorizedHandlers = new Set<() => void>();
-let verifiedSessionToken: string | null = null;
+const requestGenerations = new WeakMap<object, number>();
+let generation = 0;
+let verifiedSession: SessionProof | null = null;
 
-export const setVerifiedSessionToken = (token: string | null) => {
-    verifiedSessionToken = token;
-};
-
+export const getSessionGeneration = () => generation;
+export function invalidateSession() {
+    generation++;
+    verifiedSession = null;
+}
+export function setVerifiedSession(session: SessionProof) {
+    verifiedSession = session;
+}
 export const onUnauthorized = (handler: () => void) => {
     unauthorizedHandlers.add(handler);
     return () => { unauthorizedHandlers.delete(handler); };
 };
 
 api.interceptors.request.use((config) => {
-    const token = Cookies.get('token');
-    if (!token) {
-        for (const handler of unauthorizedHandlers) handler();
-    }
-    if (token && !config.headers.has('Authorization')) config.headers.set('Authorization', `Bearer ${token}`);
     const method = config.method?.toUpperCase() || 'GET';
-    // Существующий маршрут удаления через GET тоже изменяет данные.
-    const isUserDeletion = method === 'GET' && config.url?.startsWith('/users/delete/');
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(method) || isUserDeletion) {
-        // Диалоги используют portal, поэтому блокируем отправку в общем клиенте.
-        if (!verifiedSessionToken || token !== verifiedSessionToken ||
-            config.headers.get('Authorization') !== `Bearer ${verifiedSessionToken}`) {
-            throw new Error('Дождитесь успешной проверки сессии и повторите действие');
-        }
+    const changesData = !['GET', 'HEAD', 'OPTIONS'].includes(method) || config.url?.startsWith('/users/delete/');
+    if (config.headers.has('Authorization') || (changesData && !verifiedSession)) {
+        throw new Error('Дождитесь успешной проверки сессии и повторите действие');
     }
+    if (verifiedSession) {
+        config.headers.set('X-Session-Id', verifiedSession.sessionId);
+        if (changesData) config.headers.set('X-CSRF-Token', verifiedSession.csrfToken);
+    }
+    requestGenerations.set(config, generation);
     return config;
 });
 
 api.interceptors.response.use((response) => response, (error: unknown) => {
-    if (axios.isAxiosError(error)) {
-        const currentToken = Cookies.get('token');
-        const expectedHeader = currentToken ? `Bearer ${currentToken}` : undefined;
-        const belongsToCurrentSession = error.config && error.config.headers.get('Authorization') === expectedHeader;
-        if (belongsToCurrentSession && error.response?.status === 401) {
-            for (const handler of unauthorizedHandlers) handler();
-        }
-        if (belongsToCurrentSession && error.response?.status === 403) {
-            toast.error('Недостаточно прав для этого действия', { id: 'api-forbidden' });
-        }
+    if (axios.isAxiosError(error) && error.config && requestGenerations.get(error.config) === generation) {
+        if (error.response?.status === 401) for (const handler of unauthorizedHandlers) handler();
+        if (error.response?.status === 403) toast.error('Недостаточно прав или требуется повторная проверка сессии', { id: 'api-forbidden' });
     }
     return Promise.reject(error);
 });
 
-// Axios errors contain request headers. Do not log them with the Bearer token.
 export const apiErrorMessage = (error: unknown) =>
     axios.isAxiosError(error) && error.response ? `HTTP ${error.response.status}` : 'Ошибка запроса или соединения';
 

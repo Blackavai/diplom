@@ -44,7 +44,7 @@ test('password hashing, transition and login limits over HTTP', { skip: process.
     const manager = await user(null, 1);
     async function post(path, body, actor, headers = {}) {
         const response = await fetch(base + '/api/auth' + path, { method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(actor ? { Authorization: `Bearer ${actor.token}` } : {}), ...headers },
+            headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer', ...(actor ? { Authorization: `Bearer ${actor.token}` } : {}), ...headers },
             body: JSON.stringify(body) });
         const text = await response.text();
         let data;

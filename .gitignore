@@ -1,1 +1,4 @@
 .env
+/backups/
+/private-backups/
+/itk_old.sql.*

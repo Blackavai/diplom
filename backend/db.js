@@ -1,10 +1,14 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+if (process.env.APP_DB_USER && !process.env.APP_DB_PASSWORD) {
+    throw new Error('Для APP_DB_USER требуется отдельный APP_DB_PASSWORD');
+}
+
 const postgree = new Pool({
     host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
+    user: process.env.APP_DB_USER || process.env.DB_USER,
+    password: process.env.APP_DB_USER ? process.env.APP_DB_PASSWORD : process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     port: Number(process.env.DB_PORT || 5432),
 });

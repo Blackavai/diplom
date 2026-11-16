@@ -1,12 +1,16 @@
 const teamModel = require('../models/teamModel');
+const { isValidUserText } = require('../utils/userValidation');
+const { requestKey } = require('../utils/idempotency');
 
 const validId = (value) => /^(?:[1-9]\d*)$/.test(String(value)) && Number(value) <= 2147483647;
 const validMembers = (value) => Array.isArray(value) && value.every((id) => Number.isInteger(id) && validId(id));
-const validName = (value) => typeof value === 'string' && value.trim().length > 0 && [...value].length <= 255;
-const validDescription = (value) => value == null || (typeof value === 'string' && [...value].length <= 255);
+const validName = isValidUserText;
+const validDescription = (value) => value == null || (typeof value === 'string' && [...value].length <= 255 &&
+    !value.includes('\0') && !/[\uD800-\uDFFF]/u.test(value));
 const invalid = (res) => res.status(400).json({ message: 'Некорректные данные команды или участников' });
 const missing = (res) => res.status(404).json({ message: 'Команда не найдена' });
 function failure(res, error) {
+    if (error.code === 'IDEMPOTENCY_CONFLICT') return res.status(409).json({ message: error.message });
     if (error.status === 400) return res.status(400).json({ message: error.message });
     if (error.code === '23503' || error.code === '40001' || error.code === '40P01') {
         return res.status(409).json({ message: 'Связанные данные изменились. Обновите команду и повторите запрос' });
@@ -25,8 +29,10 @@ const teamController = {
     createTeam: async (req, res) => {
         const { nameTeam, descriptionTeam, usersId = [] } = req.body || {};
         if (!validName(nameTeam) || !validDescription(descriptionTeam) || !validMembers(usersId)) return invalid(res);
+        const key = requestKey(req);
+        if (key === false) return res.status(400).json({ message: 'Передайте корректный Idempotency-Key' });
         try {
-            const team = await teamModel.createTeams(nameTeam, descriptionTeam, usersId);
+            const team = await teamModel.createTeams(nameTeam, descriptionTeam, usersId, req.user.id, key);
             res.json({ message: 'Команда успешно создана', task: { id: team.id } });
         } catch (error) { return failure(res, error); }
     },

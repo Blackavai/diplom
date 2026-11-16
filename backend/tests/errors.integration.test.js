@@ -64,7 +64,7 @@ test('safe API errors and controller logging on synthetic PostgreSQL', {
 
     async function request(method, path, body, bearer = managerToken, headers = {}) {
         const response = await fetch(base + path, {
-            method, headers: { 'Content-Type': 'application/json', ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}), ...headers },
+            method, headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer', ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}), ...headers },
             ...(body === undefined ? {} : { body: typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body) })
         });
         const raw = await response.text();
@@ -202,12 +202,12 @@ test('safe API errors and controller logging on synthetic PostgreSQL', {
         });
     }
 
-    await t.test('a real SQL input error does not leak its value or change rows', async () => {
+    await t.test('an invalid vacation date fails before SQL without leaking its value or changing rows', async () => {
         const before = await snapshot();
         const response = await request('POST', '/api/users/vacation/' + worker.id,
             { startHoliday: marker, endHoliday: '2026-11-16' });
-        assertSafe(response, 500, { message: 'Ошибка сервера' });
-        assert.deepEqual(logs, [['Ошибка создания отпуска']]);
+        assertSafe(response, 400, { message: 'Некорректные данные отпуска' });
+        assert.deepEqual(logs, []);
         assert.deepEqual(await snapshot(), before);
     });
 

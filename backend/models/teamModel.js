@@ -1,4 +1,5 @@
 const postgree = require('../db');
+const { beginOperation, finishOperation } = require('../utils/idempotency');
 
 async function transaction(operation) {
     const client = await postgree.connect();
@@ -46,12 +47,17 @@ const teamModel = {
         return result.rows;
     },
 
-    createTeams: (nameTeam, descriptionTeam, usersId = []) => transaction(async (client) => {
+    createTeams: (nameTeam, descriptionTeam, usersId = [], actorId = null, key = null) => transaction(async (client) => {
+        const previous = await beginOperation(client, actorId, 'team-create', key,
+            { nameTeam, descriptionTeam: descriptionTeam ?? null, usersId: [...new Set(usersId)].sort((a, b) => a - b) });
+        if (previous) return previous;
         const result = await client.query(
             'INSERT INTO teams_name(name_team, description_team) VALUES ($1, $2) RETURNING id',
             [nameTeam, descriptionTeam]
         );
+        if (!result.rows[0]) throw new Error('Team insert returned no row');
         await addMembers(client, result.rows[0].id, usersId);
+        await finishOperation(client, actorId, 'team-create', key, result.rows[0]);
         return result.rows[0];
     }),
 

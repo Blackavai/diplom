@@ -30,7 +30,7 @@ test('session revocation over HTTP on synthetic PostgreSQL', { skip: process.env
         VALUES ('Other','Test','session-other',1,'Test',$1) RETURNING id`, [await hashPassword('other-password')])).rows[0];
     async function request(path, token, body) {
         const response = await fetch(base + path, { method: body === undefined ? 'GET' : 'POST',
-            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
             ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
         return { status: response.status, data: await response.json(), headers: response.headers };
     }

@@ -49,6 +49,8 @@ router.get("/", requireManager, UserController.getAllUsers);
  *     summary: Обновить информацию о пользователе
  *     description: Обновляет имя, фамилию и должность пользователя по его ID
  *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *       - in: path
  *         name: id
  *         required: true
@@ -124,6 +126,8 @@ router.post("/update/:id", requireManager, UserController.updateUserInfo);
  *     summary: Удалить пользователя
  *     description: Удаляет пользователя по его ID
  *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *       - in: path
  *         name: id
  *         required: true
@@ -140,6 +144,10 @@ router.post("/update/:id", requireManager, UserController.updateUserInfo);
  *               properties:
  *                 message:
  *                   type: string
+ *       400:
+ *         description: Некорректный положительный id
+ *       404:
+ *         description: Пользователь не найден
  *       500:
  *         description: Внутренняя ошибка сервера
  */
@@ -151,8 +159,10 @@ router.get("/delete/:id", requireManager, UserController.deleteUser);
  *   post:
  *     tags: [Users]
  *     summary: Создать отпуск для пользователя
- *     description: Добавляет отпуск для пользователя по его ID
+ *     description: Проверяет положительный id, существование сотрудника и реальные YYYY-MM-DD/ISO даты. Порядок дат и часовые пояса остаются отдельным этапом. Возвращает сохранённую запись
  *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *       - in: path
  *         name: id
  *         required: true
@@ -190,16 +200,22 @@ router.get("/delete/:id", requireManager, UserController.deleteUser);
  *                 user:
  *                   type: object
  *                   properties:
- *                     id_user:
+ *                     id:
  *                       type: integer
+ *                     id_user:
+ *                       type: string
  *                     start_holiday:
  *                       type: string
- *                       format: date
+ *                       format: date-time
  *                       example: "2025-05-10"
  *                     end_holiday:
  *                       type: string
- *                       format: date
+ *                       format: date-time
  *                       example: "2025-06-01"
+ *       400:
+ *         description: Некорректные id или даты
+ *       404:
+ *         description: Пользователь не найден
  *       500:
  *         description: Внутренняя ошибка сервера
  */

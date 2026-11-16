@@ -37,7 +37,7 @@ test('report validation and completion on synthetic PostgreSQL', { skip: process
     async function post(body, bearer = workerToken) {
         const response = await fetch(base + '/api/reports/new', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
+            headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
             ...(body === undefined ? {} : { body: JSON.stringify(body) })
         });
         const raw = await response.text();
@@ -130,11 +130,11 @@ test('report validation and completion on synthetic PostgreSQL', { skip: process
             await pool.query('DROP FUNCTION reports_validation_fail_update()');
         }
     });
-    await t.test('existing parallel multiple-report behavior remains supported', async () => {
+    await t.test('parallel reports complete once and the second request receives conflict', async () => {
         const id = await createTask();
         const responses = await Promise.all([post({ ...valid(), id_task: id }), post({ ...valid(), id_task: id })]);
-        assert.deepEqual(responses.map(response => response.status), [200, 200]);
-        assert.equal((await pool.query('SELECT count(*)::integer AS count FROM report_list WHERE id_task=$1', [id])).rows[0].count, 2);
+        assert.deepEqual(responses.map(response => response.status).sort(), [200, 409]);
+        assert.equal((await pool.query('SELECT count(*)::integer AS count FROM report_list WHERE id_task=$1', [id])).rows[0].count, 1);
         assert.equal((await pool.query('SELECT status FROM task_list WHERE id=$1', [id])).rows[0].status, true);
     });
 });

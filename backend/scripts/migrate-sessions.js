@@ -48,7 +48,7 @@ async function main(args) {
     if (targets.length !== 1 || !targets[0].slice(11) || new Set(args).size !== args.length ||
         args.some((arg) => !['--apply', '--dry-run'].includes(arg) && !arg.startsWith('--database=')) ||
         (args.includes('--apply') && args.includes('--dry-run'))) throw new Error('Invalid migration arguments');
-    const pool = require('../db');
+    const pool = require('./admin-pool')();
     try {
         console.log(JSON.stringify(await migrateSessions(pool, {
             apply: args.includes('--apply'), expectedDatabase: targets[0].slice(11)

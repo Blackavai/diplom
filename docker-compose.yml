@@ -33,8 +33,10 @@ services:
     environment:
       NODE_ENV: production
       DB_HOST: ${DB_HOST}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_USER: ${APP_DB_USER:-${DB_USER}}
+      DB_PASSWORD: ${APP_DB_PASSWORD:-${DB_PASSWORD}}
+      APP_DB_USER: ${APP_DB_USER:-}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-}
       DB_NAME: ${DB_NAME}
       # Container-to-container connections use the internal PostgreSQL port.
       DB_PORT: "5432"

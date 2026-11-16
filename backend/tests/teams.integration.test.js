@@ -32,7 +32,7 @@ test('atomic team operations on synthetic PostgreSQL', {
     const missingUser = 2147483647;
     const request = async (method, path, body) => {
         const response = await fetch(base + path, {
-            method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            method, headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer', Authorization: `Bearer ${token}` },
             ...(body === undefined ? {} : { body: JSON.stringify(body) })
         });
         return { status: response.status, data: await response.json() };

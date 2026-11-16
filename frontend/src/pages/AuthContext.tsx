@@ -1,9 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Cookies from 'js-cookie';
 import axios from 'axios';
 import { toast } from 'sonner';
-import api, { publicApi, onUnauthorized, setVerifiedSessionToken } from '@/lib/api';
+import { publicApi, onUnauthorized, getSessionGeneration, invalidateSession, setVerifiedSession } from '@/lib/api';
+import type { SessionProof } from '@/lib/api';
+import { createRequestKey } from '@/lib/requestKey';
 
 interface AuthUser {
     id: number;
@@ -13,13 +15,11 @@ interface AuthUser {
     post: string;
     role: number;
 }
-
+interface SessionResponse extends SessionProof { user: AuthUser }
 type SessionStatus = 'checking' | 'authenticated' | 'anonymous' | 'error' | 'forbidden';
-
 interface AuthContextType {
     user: AuthUser | null;
-    token: string | null;
-    setToken: (token: string | null) => void;
+    completeLogin: () => void;
     status: SessionStatus;
     isCheckingSession: boolean;
     sessionError: string | null;
@@ -27,136 +27,139 @@ interface AuthContextType {
     retrySession: () => void;
 }
 
+const EVENT_KEY = 'dailysync.session-event';
+function locallySignedOut() {
+    try { return localStorage.getItem(EVENT_KEY)?.startsWith('out:') || false; }
+    catch { return false; }
+}
+function publishSessionEvent(kind: 'in' | 'out') {
+    // Это уведомление вкладкам, не токен и не доказательство авторизации.
+    try { localStorage.setItem(EVENT_KEY, kind + ':' + createRequestKey()); } catch { /* хранилище может быть отключено */ }
+}
+function validSession(data: SessionResponse) {
+    return data.user && Number.isInteger(data.user.id) && [1, 2].includes(data.user.role) &&
+        /^[a-f0-9]{32}$/.test(data.sessionId) && /^[a-f0-9]{64}$/.test(data.csrfToken);
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-    // userData — только кеш; пользователя и роль подтверждает сервер.
     const [user, setUser] = useState<AuthUser | null>(null);
-    const [token, setToken] = useState<string | null>(Cookies.get('token') || null);
-    const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
-    const [status, setStatus] = useState<SessionStatus>(token ? 'checking' : 'anonymous');
+    const [status, setStatus] = useState<SessionStatus>(locallySignedOut() ? 'anonymous' : 'checking');
     const [checkVersion, setCheckVersion] = useState(0);
-    const [isCheckingSession, setIsCheckingSession] = useState(Boolean(token));
+    const [isCheckingSession, setIsCheckingSession] = useState(!locallySignedOut());
     const [sessionError, setSessionError] = useState<string | null>(null);
+    const lastProof = useRef<SessionProof | null>(null);
 
-    const updateToken = useCallback((nextToken: string | null) => {
-        setVerifiedSessionToken(null);
-        if (nextToken) Cookies.set('token', nextToken, { expires: 1 / 24 });
-        else Cookies.remove('token');
-        Cookies.remove('userData');
-        Cookies.remove('tokenExpiration');
-        setToken(nextToken);
+    const clearLocalSession = useCallback(() => {
+        invalidateSession();
+        lastProof.current = null;
+        for (const name of ['token', 'userData', 'tokenExpiration']) Cookies.remove(name);
+        publishSessionEvent('out');
         setUser(null);
-        setVerifiedToken(null);
-        setStatus(nextToken ? 'checking' : 'anonymous');
-        setIsCheckingSession(Boolean(nextToken));
+        setStatus('anonymous');
+        setIsCheckingSession(false);
         setSessionError(null);
         setCheckVersion((value) => value + 1);
     }, []);
-    const clearLocalSession = useCallback(() => updateToken(null), [updateToken]);
-    const logout = useCallback(async () => {
-        const outgoingToken = Cookies.get('token');
-        clearLocalSession();
-        if (!outgoingToken) return;
-        try {
-            // Выход доступен и при неудавшейся проверке сессии. Не запускаем
-            // обработчики 401 защищённого клиента повторно.
-            await publicApi.post('/auth/logout', {}, {
-                headers: { Authorization: `Bearer ${outgoingToken}` }, timeout: 15000
-            });
-            if (!Cookies.get('token')) toast.success('Все сессии завершены');
-        } catch (error: unknown) {
-            if (Cookies.get('token')) return;
-            if (axios.isAxiosError(error) && error.response?.status === 401) {
-                toast.success('Сессия уже завершена');
-            } else {
-                toast.error('Вы вышли на этом устройстве. Серверный отзыв сессий не подтверждён.');
-            }
-        }
-    }, [clearLocalSession]);
     const retrySession = useCallback(() => {
-        setVerifiedSessionToken(null);
+        invalidateSession();
         setIsCheckingSession(true);
         setSessionError(null);
-        // Фоновая проверка прежней сессии сохраняет страницу и её формы.
-        setStatus((currentStatus) => {
-            if (currentStatus === 'authenticated') return currentStatus;
-            return 'checking';
-        });
+        setStatus((current) => current === 'authenticated' ? current : 'checking');
         setCheckVersion((value) => value + 1);
     }, []);
+    const completeLogin = useCallback(() => {
+        lastProof.current = null;
+        setUser(null);
+        publishSessionEvent('in');
+        retrySession();
+    }, [retrySession]);
+
+    const logout = useCallback(async () => {
+        let proof = lastProof.current;
+        clearLocalSession();
+        const outgoingGeneration = getSessionGeneration();
+        try {
+            if (!proof) {
+                const { data } = await publicApi.get<SessionResponse>('/auth/protected', { timeout: 15000 });
+                if (!validSession(data)) throw new Error('Invalid session response');
+                proof = data;
+            }
+            if (outgoingGeneration !== getSessionGeneration()) return;
+            await publicApi.post('/auth/logout', {}, { timeout: 15000,
+                headers: { 'X-Session-Id': proof.sessionId, 'X-CSRF-Token': proof.csrfToken } });
+            if (outgoingGeneration === getSessionGeneration()) toast.success('Все сессии завершены');
+        } catch (error: unknown) {
+            if (outgoingGeneration !== getSessionGeneration()) return;
+            if (axios.isAxiosError(error) && error.response?.status === 401) toast.success('Сессия уже завершена');
+            else toast.error('Вы вышли на этом устройстве. Серверный отзыв сессий не подтверждён.');
+        }
+    }, [clearLocalSession]);
 
     useEffect(() => onUnauthorized(clearLocalSession), [clearLocalSession]);
-
     useEffect(() => {
-        if (!token) return;
+        if (locallySignedOut()) return;
         let cancelled = false;
-        setVerifiedSessionToken(null);
+        const expectedGeneration = getSessionGeneration();
         async function checkSession() {
             try {
-                const { data } = await api.get<{ user: AuthUser }>('/auth/protected', {
-                    headers: { Authorization: `Bearer ${token}` }, timeout: 15000
-                });
-                if (cancelled) return;
-                const cookieToken = Cookies.get('token') || null;
-                if (cookieToken !== token) { updateToken(cookieToken); return; }
-                if (!data.user || !Number.isInteger(data.user.id) || ![1, 2].includes(data.user.role)) {
-                    throw new Error('Некорректный ответ проверки сессии');
-                }
+                const { data } = await publicApi.get<SessionResponse>('/auth/protected', { timeout: 15000 });
+                if (cancelled || expectedGeneration !== getSessionGeneration()) return;
+                if (!validSession(data)) throw new Error('Некорректный ответ проверки сессии');
+                const proof = { sessionId: data.sessionId, csrfToken: data.csrfToken };
+                lastProof.current = proof;
+                setVerifiedSession(proof);
                 setUser(data.user);
-                setVerifiedToken(token);
                 setStatus('authenticated');
                 setIsCheckingSession(false);
                 setSessionError(null);
-                setVerifiedSessionToken(token);
-                Cookies.set('userData', JSON.stringify(data.user), { expires: 1 / 24 });
             } catch (error: unknown) {
-                if (cancelled) return;
-                const cookieToken = Cookies.get('token') || null;
-                if (cookieToken !== token) { updateToken(cookieToken); return; }
+                if (cancelled || expectedGeneration !== getSessionGeneration()) return;
                 setIsCheckingSession(false);
                 if (axios.isAxiosError(error) && error.response?.status === 401) { clearLocalSession(); return; }
                 if (axios.isAxiosError(error) && error.response?.status === 403) {
                     setUser(null);
-                    setVerifiedToken(null);
+                    lastProof.current = null;
                     setStatus('forbidden');
                     return;
                 }
                 setSessionError('Не удалось проверить сессию. Проверьте соединение.');
-                setStatus((currentStatus) => {
-                    if (currentStatus === 'authenticated') return currentStatus;
-                    return 'error';
-                });
+                setStatus((current) => current === 'authenticated' ? current : 'error');
             }
         }
         checkSession();
         return () => { cancelled = true; };
-    }, [token, checkVersion, clearLocalSession, updateToken]);
+    }, [checkVersion, clearLocalSession]);
 
     useEffect(() => {
-        const onFocus = () => {
-            const cookieToken = Cookies.get('token') || null;
-            if (cookieToken !== token) updateToken(cookieToken);
-            else if (token) retrySession();
+        const onFocus = () => { if (!locallySignedOut()) retrySession(); };
+        const onStorage = (event: StorageEvent) => {
+            if (event.key !== EVENT_KEY) return;
+            if (event.newValue?.startsWith('out:')) {
+                // Не публикуем событие снова, чтобы вкладки не зациклились.
+                invalidateSession();
+                lastProof.current = null;
+                setUser(null);
+                setStatus('anonymous');
+                setSessionError(null);
+                setIsCheckingSession(false);
+                setCheckVersion((value) => value + 1);
+            } else {
+                lastProof.current = null;
+                setUser(null);
+                retrySession();
+            }
         };
         window.addEventListener('focus', onFocus);
-        return () => window.removeEventListener('focus', onFocus);
-    }, [token, updateToken, retrySession]);
+        window.addEventListener('storage', onStorage);
+        return () => { window.removeEventListener('focus', onFocus); window.removeEventListener('storage', onStorage); };
+    }, [retrySession]);
 
-    const checkedStatus = status === 'authenticated' && verifiedToken !== token ? 'checking' : status;
-
-    return (
-        <AuthContext.Provider value={{ user, token, setToken: updateToken, status: checkedStatus, isCheckingSession, sessionError, logout, retrySession }}>
-            {children}
-        </AuthContext.Provider>
-    );
+    return <AuthContext.Provider value={{ user, completeLogin, status, isCheckingSession, sessionError, logout, retrySession }}>{children}</AuthContext.Provider>;
 };
-
 
 export const useAuth = () => {
     const context = useContext(AuthContext);
-    if (!context) {
-        throw new Error('useAuth must be used within an AuthProvider');
-    }
+    if (!context) throw new Error('useAuth must be used within an AuthProvider');
     return context;
 };

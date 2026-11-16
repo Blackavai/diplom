@@ -11,6 +11,15 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *     security: []
  *     summary: Вход пользователя
  *     description: Проверяет пароль через scrypt; временный вход со старым паролем разрешён только до явно заданного LEGACY_PASSWORD_LOGIN_UNTIL и преобразует запись условным UPDATE. Новых ограничений длины нет, действует существующий лимит JSON. На аккаунт 10 запросов, на IP 60 запросов за 15 минут, включая успешные входы.
+ *     parameters:
+ *       - in: header
+ *         name: X-Requested-With
+ *         description: Для браузерного входа — XMLHttpRequest; устанавливается HttpOnly-cookie без JWT в JSON
+ *         schema: { type: string, enum: [XMLHttpRequest] }
+ *       - in: header
+ *         name: X-Auth-Mode
+ *         description: Явный небраузерный вход; при Origin или Sec-Fetch-Site отклоняется
+ *         schema: { type: string, enum: [bearer] }
  *     requestBody:
  *       required: true
  *       content:
@@ -50,8 +59,11 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *                       type: string
  *                     token:
  *                       type: string
+ *                       description: Только при явном небраузерном Bearer-входе
  *       400:
  *         description: Единое сообщение о неверном логине или пароле
+ *       403:
+ *         description: Не подтверждён режим входа
  *       429:
  *         description: Лимит попыток входа, Retry-After 900 секунд
  *       503:
@@ -156,7 +168,7 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *     tags: [Authorization]
  *     security: []
  *     summary: Установить новый пароль по одноразовому разрешению
- *     description: Разрешение привязано к пользователю, действует 5 минут и расходуется до записи в БД. После ошибки записи требуется повторное подтверждение. Перезапуск backend отменяет разрешения. Новый пароль сохраняется как scrypt-хеш без ограничения длины в символах; действует лимит JSON-запроса. Ранее выданные JWT не отзываются.
+ *     description: Разрешение привязано к пользователю, действует 5 минут и расходуется до записи в БД. После ошибки записи требуется повторное подтверждение. Перезапуск backend отменяет разрешения. Новый пароль сохраняется как scrypt-хеш без ограничения длины в символах; действует лимит JSON-запроса. Пароль и версия сессий обновляются атомарно; прежние JWT отзываются.
  *     requestBody:
  *       required: true
  *       content:
@@ -202,15 +214,16 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  * /api/auth/protected:
  *   get:
  *     tags: [Authorization]
- *     summary: Получить текущего пользователя по Bearer JWT
+ *     summary: Получить текущего пользователя по проверенной сессии
  *     description: Проверяет HS256, срок действия, существование пользователя, актуальную роль и sessionVersion в БД. JWT без версии больше не принимается. Пароль и секретный ответ не возвращаются.
  *     security:
  *       - bearerAuth: []
+ *       - cookieAuth: []
  *     responses:
  *       200:
- *         description: Безопасные поля пользователя в объекте user
+ *         description: Безопасные поля пользователя в объекте user; для cookie также sessionId и csrfToken, без JWT
  *       401:
- *         description: Нет Bearer JWT, неверный токен или пользователь отсутствует
+ *         description: Нет действительной сессии или пользователь отсутствует
  *       403:
  *         description: Роль пользователя не разрешена
  *       500:
@@ -225,7 +238,11 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *     summary: Создать сотрудника (менеджер)
  *     security:
  *       - bearerAuth: []
- *     description: Проверяет поля до SQL и возвращает только безопасные данные. Пароль сохраняется как scrypt без новых правил длины. Уникальность tg_id на уровне БД этим маршрутом не гарантируется при параллельных запросах.
+ *       - cookieAuth: []
+ *     description: Проверяет поля до SQL и возвращает только безопасные данные. Пароль сохраняется как scrypt без новых правил длины. После применения migrate-integrity.js уникальность tg_id закреплена БД; конкурентный конфликт возвращает 409.
+ *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *     requestBody:
  *       required: true
  *       content:
@@ -298,6 +315,29 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *         description: Безопасная ошибка сервера
  */
 router.post("/createUser", authenticate, requireManager, AuthController.insertNewUser);
+/**
+ * @openapi
+ * /api/auth/delUser/{id}:
+ *   delete:
+ *     tags: [Authorization]
+ *     summary: Удалить сотрудника (менеджер)
+ *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer, minimum: 1, maximum: 2147483647 }
+ *     responses:
+ *       201:
+ *         description: Пользователь удалён
+ *       400:
+ *         description: Некорректный идентификатор
+ *       404:
+ *         description: Пользователь не найден
+ *       500:
+ *         description: Безопасная ошибка, включая отказ зависимостей; политика истории остаётся отдельным этапом
+ */
 router.delete("/delUser/:id", authenticate, requireManager, AuthController.deleteUser);
 /**
  * @openapi
@@ -305,9 +345,13 @@ router.delete("/delUser/:id", authenticate, requireManager, AuthController.delet
  *   post:
  *     tags: [Authorization]
  *     summary: Завершить все сессии текущего пользователя
- *     description: Требует Bearer JWT с актуальной sessionVersion. Увеличивает версию в БД; все прежние JWT отклоняются. Cookie удаляет клиент. Уже начатые операции не отменяются.
+ *     description: Требует проверенную сессию с актуальной sessionVersion. Для cookie нужны X-Session-Id и X-CSRF-Token. Увеличивает версию в БД; все прежние JWT отклоняются. HttpOnly-cookie остаётся до срока истечения, но уже недействительна; поздний ответ выхода не перезаписывает новый вход. Уже начатые операции не отменяются.
  *     security:
  *       - bearerAuth: []
+ *       - cookieAuth: []
+ *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
  *     responses:
  *       200:
  *         description: Все прежние сессии завершены

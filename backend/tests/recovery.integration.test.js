@@ -42,7 +42,7 @@ test('recovery and safe user DTO over HTTP with synthetic PostgreSQL', {
     async function post(path, body, headers = {}) {
         const response = await fetch(baseURL + path, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json',
+            headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer',
                 ...(path.startsWith('/api/users/') ? { Authorization: `Bearer ${managerToken}` } : {}), ...headers },
             body: JSON.stringify(body)
         });

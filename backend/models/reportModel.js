@@ -1,4 +1,5 @@
 const postgree = require("../db");
+const { beginOperation, finishOperation } = require('../utils/idempotency');
 
 const reportModel = {
     getAllReports: async () => {
@@ -11,14 +12,24 @@ const reportModel = {
         const result = await postgree.query(query, values);
         return result.rows[0];
     },
-    newReports: async (id_task, id_user, text_report, end_date) => {
+    newReports: async (id_task, id_user, text_report, end_date, key = null) => {
         const client = await postgree.connect();
         try {
             await client.query('BEGIN');
-            const task = await client.query('SELECT id FROM task_list WHERE id = $1 AND id_user = $2 FOR UPDATE', [id_task, id_user]);
+            const previous = await beginOperation(client, id_user, 'report-create', key, { id_task, text_report, end_date });
+            if (previous) {
+                await client.query('COMMIT');
+                return previous;
+            }
+            const task = await client.query('SELECT id, status FROM task_list WHERE id = $1 AND id_user = $2 FOR UPDATE', [id_task, id_user]);
             if (!task.rowCount) {
                 await client.query('ROLLBACK');
                 return null;
+            }
+            if (task.rows[0].status) {
+                const error = new Error('По завершённой задаче уже отправлен отчёт');
+                error.code = 'TASK_ALREADY_COMPLETED';
+                throw error;
             }
             const result = await client.query(
                 'INSERT INTO report_list(id_task, id_user, text_report, end_date, status_task) VALUES ($1, $2, $3, $4, true) RETURNING id',
@@ -26,6 +37,8 @@ const reportModel = {
             );
             const updated = await client.query('UPDATE task_list SET status = true WHERE id = $1 AND id_user = $2', [id_task, id_user]);
             if (updated.rowCount !== 1) throw new Error('Task update failed');
+            if (!result.rows[0]) throw new Error('Report insert returned no row');
+            await finishOperation(client, id_user, 'report-create', key, result.rows[0]);
             await client.query('COMMIT');
             return result.rows[0];
         } catch (err) {

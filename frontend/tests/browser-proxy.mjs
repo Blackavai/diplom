@@ -117,7 +117,14 @@ try {
     await until("!document.querySelector('[role=dialog]') && !Array.from(document.querySelectorAll('.rowUserTask')).some(row=>row.textContent.includes('Browser proxy report task'))");
     assert.equal(requests.filter(url => url.endsWith('/api/reports/new')).length, beforeReport + 1);
     assert.ok(responseStatuses.some(item => item.path === '/api/reports/new' && item.status === 200));
-    const oldToken = await evaluate("decodeURIComponent(document.cookie.split('; ').find(value => value.startsWith('token=')).slice(6))");
+    const cookies = (await call('Network.getCookies', {urls:[origin+'/api/auth/protected']})).cookies;
+    const sessionCookie = cookies.find(cookie=>cookie.name==='dailysync_session');
+    assert.ok(sessionCookie);
+    assert.equal(sessionCookie.httpOnly,true);
+    assert.equal(sessionCookie.sameSite,'Lax');
+    assert.equal(sessionCookie.path,'/api');
+    assert.equal(await evaluate("document.cookie.includes('dailysync_session=') || document.cookie.includes('token=')"),false);
+    const oldToken = sessionCookie.value;
     await evaluate("document.querySelector('.item_auth img[alt=Выход]').click()");
     await until("location.pathname==='/login' && document.body.innerText.includes('Все сессии завершены')");
     const replayStatus = await evaluate(`fetch('/api/auth/protected', { headers: { Authorization: ${JSON.stringify('Bearer ' + oldToken)} } }).then(response => response.status)`);

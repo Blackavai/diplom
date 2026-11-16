@@ -34,6 +34,9 @@ services:
     depends_on:
       recovery-db:
         condition: service_healthy
+    volumes:
+      # Проверяем новый bootstrap без пользователей на отдельной тестовой БД.
+      - ./itk_old.sql:/test-bootstrap.sql:ro
     command: ["npm", "test"]
 
   frontend-checks:

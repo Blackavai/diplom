@@ -1,6 +1,7 @@
 // Run with Node >=22 against a dedicated headless Chrome and the test static server.
 // Every request to the existing API is intercepted before the network; no real backend is used.
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 
 const [debugPort, origin] = process.argv.slice(2);
 assert.match(debugPort || '', /^\d+$/);
@@ -24,6 +25,10 @@ const records = [];
 const exceptions = [];
 const interceptionErrors = [];
 let mode = 'worker';
+let sessionValue = null;
+let loginSequence = 0;
+const revoked = new Set();
+const proofFor = value => ({sessionId:createHash('sha256').update(value || 'anonymous').digest('hex').slice(0,32),csrfToken:'b'.repeat(64)});
 let holdLogout = false;
 let logoutStatus = 200;
 const pendingLogouts = [];
@@ -61,7 +66,16 @@ const headers = [
     ['Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS'], ['Cache-Control', 'no-store']
 ].map(([name, value]) => ({ name, value }));
 async function respond(event, status, data) {
-    await call('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: status, responseHeaders: headers,
+    const responseHeaders = [...headers];
+    const path = new URL(event.request.url).pathname;
+    if (path === '/api/auth/protected' && status === 200) data = {...data,...proofFor(event.sessionValue)};
+    if (path === '/api/auth/login' && status === 200) {
+        sessionValue = 'synthetic-login-' + (++loginSequence);
+        responseHeaders.push({name:'Set-Cookie',value:'dailysync_session='+sessionValue+'; Path=/api; HttpOnly; SameSite=Lax'});
+        data = {user:actor()};
+    }
+    if (path === '/api/auth/logout' && status === 200) revoked.add(event.sessionValue);
+    await call('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: status, responseHeaders,
         body: status === 204 ? '' : Buffer.from(JSON.stringify(data)).toString('base64') });
 }
 function createResponse(event) {
@@ -78,13 +92,16 @@ async function finishCreate(event) {
 }
 async function intercept(event) {
     const path = new URL(event.request.url).pathname;
+    event.sessionValue = sessionValue;
     if (event.request.method === 'OPTIONS') return respond(event, 204, null);
     const body = event.request.postData ? JSON.parse(event.request.postData) : {};
     const password = body.password ?? body.pass ?? body.textNewPassword;
     records.push({ path, method: event.request.method, usersId: body.usersId, role: body.role, hasBearer: /^Bearer /.test(event.request.headers.Authorization || event.request.headers.authorization || ''),
         passwordChars: typeof password === 'string' ? password.length : undefined });
+    if (!path.startsWith('/api/auth/') && (!sessionValue || revoked.has(sessionValue))) return respond(event,401,{message:'Expired'});
     if (expectedPassword !== undefined && password !== undefined) assert.equal(password, expectedPassword);
     if (path === '/api/auth/protected') {
+        if (!sessionValue || revoked.has(sessionValue)) return respond(event,401,{message:'Anonymous'});
         if (holdSession) { pendingSessions.push(event); return; }
         if (mode === 'expired') return respond(event, 401, { message: 'Недействительная сессия' });
         if (mode === 'unavailable') return respond(event, 500, { message: 'Ошибка сервера' });
@@ -173,9 +190,17 @@ async function until(predicate) {
 }
 const hasText = (text) => evaluate(`document.body.innerText.includes(${JSON.stringify(text)})`);
 const navigate = (path) => call('Page.navigate', { url: origin + path });
-const cookie = (name, value) => call('Network.setCookie', { name, value, url: origin, path: '/' });
-const clearCookies = () => call('Network.clearBrowserCookies');
-const hasToken = () => evaluate("document.cookie.split(';').some(part => part.trim().startsWith('token='))");
+const cookie = async (name,value) => {
+    if (name==='token') {
+        sessionValue=value;
+        revoked.delete(value);
+        await evaluate("localStorage.removeItem('dailysync.session-event')");
+        return call('Network.setCookie',{name:'dailysync_session',value,url:origin,path:'/api',httpOnly:true,sameSite:'Lax'});
+    }
+    return call('Network.setCookie',{name,value,url:origin,path:'/'});
+};
+const clearCookies = async () => {sessionValue=null; await call('Network.clearBrowserCookies');};
+const hasToken = () => evaluate("!localStorage.getItem('dailysync.session-event')?.startsWith('out:')");
 const clickButton = (text) => evaluate(`Array.from(document.querySelectorAll('button')).find(button => button.textContent === ${JSON.stringify(text)}).click()`);
 const fill = (placeholder, value) => evaluate(`{
     const input = document.querySelector('input[placeholder='+${JSON.stringify(JSON.stringify(placeholder))}+']');
@@ -203,7 +228,7 @@ try {
     await clearCookies();
     await navigate('/tasks');
     await until(() => evaluate("location.pathname === '/login'"));
-    assert.equal(records.length, 0);
+    assert.equal(records.filter(record=>record.path!=='/api/auth/protected').length, 0);
     pass('anonymous navigation redirects to login without business requests');
 
     await cookie('token', 'synthetic-session');
@@ -218,7 +243,7 @@ try {
     pendingSessions = [];
     await until(() => hasText('Недостаточно прав для этой страницы'));
     assert.equal(records.some((entry) => entry.path === '/api/users'), false);
-    assert.ok(records.filter((entry) => entry.path === '/api/auth/protected').every((entry) => entry.hasBearer));
+    assert.ok(records.filter((entry) => entry.path === '/api/auth/protected').every((entry) => !entry.hasBearer));
     pass('server role overrides forged cookie; protected page waits and stays blocked');
 
     await cookie('userData', 'not-valid-json');
@@ -266,7 +291,7 @@ try {
 
     mode = 'management403';
     await navigate('/users');
-    await until(() => hasText('Недостаточно прав для этого действия'));
+    await until(() => hasText('Недостаточно прав или требуется повторная проверка сессии'));
     assert.equal(await hasToken(), true);
     assert.equal(await evaluate('location.pathname'), '/users');
     pass('403 shows an access error and preserves session');
@@ -490,12 +515,14 @@ try {
         await until(() => hasText('Создание команды'));
         await fill('Название', 'Expired cookie draft');
         const beforeExpiry = records.filter((record) => record.path === '/api/teams/create').length;
-        await call('Network.deleteCookies', { name: 'token', url: origin });
+        await call('Network.deleteCookies', { name: 'dailysync_session', url: origin });
+        sessionValue=null;
         await clickButton('Сохранить');
         await until(() => evaluate("location.pathname==='/login'"));
-        assert.equal(records.filter((record) => record.path === '/api/teams/create').length, beforeExpiry);
+        assert.equal(records.filter((record) => record.path === '/api/teams/create').length, beforeExpiry+1);
+        // HttpOnly-cookie недоступна JS; сервер отклоняет отправленный запрос до записи.
         await cookie('token', 'synthetic-session');
-        pass('cookie expiry during editing closes the session without sending the form');
+        pass('cookie expiry during editing receives 401 and closes the local session');
 
         const drafts = [
             { mode: 'manager', path: '/users', trigger: 'button.addUser', placeholder: 'Введите имя сотрудника' },
@@ -558,6 +585,7 @@ try {
             await beginSessionCheck();
             const oldEvents = pendingSessions.splice(0);
             await cookie('token', 'synthetic-new');
+            await evaluate("window.dispatchEvent(new StorageEvent('storage',{key:'dailysync.session-event',newValue:'in:changed'}))");
             mode = 'worker';
             await evaluate("window.dispatchEvent(new Event('focus'))");
             await until(async () => pendingSessions.length > 0);
@@ -646,11 +674,11 @@ try {
         await until(async () => records.filter(item => item.path === '/api/auth/logout').length === count + 1);
         const outgoing = records.filter(item => item.path === '/api/auth/logout').at(-1);
         assert.equal(outgoing.method, 'POST');
-        assert.equal(outgoing.hasBearer, true);
+        assert.equal(outgoing.hasBearer, false);
         assert.equal(await hasToken(), false);
         const message = resultStatus === 500 ? 'Серверный отзыв сессий не подтверждён' : (resultStatus === 401 ? 'Сессия уже завершена' : 'Все сессии завершены');
         await until(() => hasText(message));
-        pass(`logout ${resultStatus}: explicit Bearer, local cleanup and accurate result`);
+        pass(`logout ${resultStatus}: cookie/CSRF, local cleanup and accurate result`);
     }
     logoutStatus = 200;
     holdLogout = true;

@@ -44,7 +44,7 @@ test('task API contract on synthetic PostgreSQL', { skip: process.env.RECOVERY_T
     const validUpdate = () => ({ content: 'Synthetic updated task', end_date: '2026-11-18', status: false });
     async function request(method, path, body, bearer = managerToken) {
         const response = await fetch(base + path, {
-            method, headers: { 'Content-Type': 'application/json', ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}) },
+            method, headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'bearer', ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}) },
             ...(body === undefined ? {} : { body: JSON.stringify(body) })
         });
         const raw = await response.text();
