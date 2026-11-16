@@ -48,7 +48,7 @@ test('session revocation over HTTP on synthetic PostgreSQL', { skip: process.env
         const current = await request('/protected', token);
         assert.equal(current.status, 200);
         assert.equal(current.headers.get('cache-control'), 'no-store');
-        assert.deepEqual(Object.keys(current.data.user).sort(), ['fname','id','lname','post','role','tg_id']);
+        assert.deepEqual(Object.keys(current.data.user).sort(), ['fname','id','lname','passwordChangeRecommended','post','role','tg_id']);
     });
     await t.test('legacy, negative, fractional, string and mismatched versions fail closed', async () => {
         for (const value of [undefined, null, -1, 0.5, '0', 1, 2147483648]) {
@@ -88,15 +88,13 @@ test('session revocation over HTTP on synthetic PostgreSQL', { skip: process.env
     await t.test('reset changes password and revokes sessions in the same update', async () => {
         const old = await login();
         const before = await version();
-        const grant = await request('/recAns', null, { tg_id: 'session-worker', secAns: 'synthetic-answer' });
-        assert.equal(grant.status, 200);
-        const body = { tg_id: 'session-worker', recoveryToken: grant.data.recoveryToken, textNewPassword: 'reset-password' };
-        assert.equal((await request('/recPass/newPass', null, body)).status, 200);
+        const body = { currentPassword: 'session-password', newPassword: 'reset-password', confirmPassword: 'reset-password' };
+        assert.equal((await request('/change-password', old, body)).status, 200);
         assert.equal(await version(), before + 1);
         assert.equal((await request('/protected', old)).status, 401);
         assert.equal((await request('/login', null, { tg_id: 'session-worker', password: 'session-password' })).status, 400);
         assert.equal((await request('/protected', await login('reset-password'))).status, 200);
-        assert.equal((await request('/recPass/newPass', null, body)).status, 403);
+        assert.equal((await request('/change-password', old, body)).status, 401);
         assert.equal(await version(), before + 1);
     });
     await t.test('SQL failure rolls back password and version together', async () => {
@@ -106,8 +104,8 @@ test('session revocation over HTTP on synthetic PostgreSQL', { skip: process.env
         await pool.query(`CREATE TRIGGER session_reset_failure BEFORE UPDATE ON users
             FOR EACH ROW WHEN (OLD.id = ${actor.id}) EXECUTE FUNCTION session_fail_reset()`);
         try {
-            const grant = await request('/recAns', null, { tg_id: 'session-worker', secAns: 'synthetic-answer' });
-            const failed = await request('/recPass/newPass', null, { tg_id: 'session-worker', recoveryToken: grant.data.recoveryToken, textNewPassword: 'failed-reset' });
+            const token = await login('reset-password');
+            const failed = await request('/change-password', token, { currentPassword: 'reset-password', newPassword: 'failed-reset', confirmPassword: 'failed-reset' });
             assert.equal(failed.status, 500);
             assert.deepEqual(failed.data, { message: 'Ошибка сервера' });
             assert.deepEqual((await pool.query('SELECT password,session_version FROM users WHERE id=$1', [actor.id])).rows[0], before);
@@ -120,7 +118,7 @@ test('session revocation over HTTP on synthetic PostgreSQL', { skip: process.env
         const original = AuthModel.findUserByTGid;
         subtest.mock.method(AuthModel, 'findUserByTGid', async (account) => {
             const previous = await original(account);
-            await AuthModel.newPassword(actor.id, account, await hashPassword('race-password'));
+            await AuthModel.changeOwnPassword(await AuthModel.findCredentialsById(actor.id), await hashPassword('race-password'));
             return previous;
         });
         const stale = await login('reset-password');

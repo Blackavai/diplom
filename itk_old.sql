@@ -18,6 +18,7 @@ CREATE TABLE users (
     post varchar(255) NOT NULL,
     password text,
     session_version integer NOT NULL DEFAULT 0,
+    password_change_recommended boolean NOT NULL DEFAULT false,
     question varchar(255),
     answer varchar(255),
     chat_id bigint,

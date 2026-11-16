@@ -27,6 +27,12 @@ const AuthRedirect = ({ roles }: { roles?: number[] }) => {
                     <button className="btnInteractive" onClick={logout}>Выйти</button>
                 </div>
             )}
+            {!roles && user.passwordChangeRecommended && (
+                <p role="status" className="password-notice">
+                    Рекомендуем сменить пароль, выданный менеджером.{' '}
+                    <Link to="/change-password">Сменить пароль</Link>. Вы можете продолжать работу.
+                </p>
+            )}
             <Outlet key={user.id} />
         </>
     );

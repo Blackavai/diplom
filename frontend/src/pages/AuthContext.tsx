@@ -139,6 +139,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return () => { window.removeEventListener('focus', onFocus); window.removeEventListener('storage', onStorage); };
     }, [retrySession]);
 
-    return <AuthContext.Provider value={{ user, completeLogin, status, isCheckingSession, sessionError, logout, retrySession }}>{children}</AuthContext.Provider>;
+    return <AuthContext.Provider value={{ user, completeLogin, completePasswordChange: clearLocalSession, status, isCheckingSession, sessionError, logout, retrySession }}>{children}</AuthContext.Provider>;
 };
 

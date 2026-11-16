@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import Header from './pages/Header.tsx';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 import User from './pages/users.tsx';
 import LoginPage from './pages/LoginPage.tsx';
 import Teams from './pages/Teams.tsx';
@@ -29,6 +30,7 @@ const App = () => {
                         <Route path="/vacation_list" element={<VacationList />} />
                     </Route>
                     <Route path="/tasks" element={<TasksEmploye />} />
+                    <Route path="/change-password" element={<ChangePasswordPage />} />
                 </Route>
                 <Route path="*" element={
                     <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center'}}>

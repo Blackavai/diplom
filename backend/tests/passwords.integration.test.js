@@ -134,16 +134,17 @@ test('password hashing, transition and login limits over HTTP', { skip: process.
         assert.equal((await verifyPassword('parallel-password', await stored(actor))).matches, true);
     });
 
-    await t.test('recovery accepts more than 1024 characters and saves only a hash', async () => {
-        const actor = await user('old-password');
-        const token = await post('/recAns', { tg_id: actor.tg_id, secAns: 'synthetic-answer' });
-        assert.equal(token.status, 200);
+    await t.test('personal change accepts more than 1024 characters and saves only a hash', async () => {
+        const actor = await user(await hashPassword('old-password'));
+        const signed = await login(actor, 'old-password');
+        actor.token = signed.data.user.token;
         const password = '🔐New password '.repeat(200);
-        const response = await post('/recPass/newPass', { tg_id: actor.tg_id, recoveryToken: token.data.recoveryToken, textNewPassword: password });
+        const payload = { currentPassword: 'old-password', newPassword: password, confirmPassword: password };
+        const response = await post('/change-password', payload, actor);
         assert.equal(response.status, 200);
         assert.equal((await verifyPassword(password, await stored(actor))).matches, true);
         assert.equal((await login(actor, password)).status, 200);
-        assert.equal((await post('/recPass/newPass', { tg_id: actor.tg_id, recoveryToken: token.data.recoveryToken, textNewPassword: password })).status, 403);
+        assert.equal((await post('/change-password', payload, actor)).status, 401);
     });
 
     await t.test('account limit applies to successful attempts and cannot be reset by changing IP', async () => {

@@ -49,6 +49,9 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  *                 user:
  *                   type: object
  *                   properties:
+ *                     passwordChangeRecommended:
+ *                       type: boolean
+ *                       description: Рекомендация сменить выданный менеджером пароль; доступ не ограничивает
  *                     fname:
  *                       type: string
  *                     lname:
@@ -76,137 +79,36 @@ const { authenticate, requireManager } = require('../middleware/authMiddleware')
  * @openapi
  * /api/auth/recPass:
  *   post:
- *     tags: [Authorization]
+ *     summary: Устаревшее восстановление отключено; обратитесь к менеджеру
+ *     deprecated: true
  *     security: []
- *     summary: Получить проверочный вопрос
- *     description: Возвращает только вопрос. Для пустых или неоднозначных учётных записей восстановление недоступно.
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [tg_id]
- *             properties:
- *               tg_id:
- *                 type: string
- *                 minLength: 1
- *                 maxLength: 255
  *     responses:
- *       200:
- *         description: Проверочный вопрос, без секретного ответа
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 recoverPassword:
- *                   type: object
- *                   properties:
- *                     questions:
- *                       type: string
- *       400:
- *         description: Некорректный запрос
- *       403:
- *         description: Восстановление недоступно
- *       429:
- *         description: Лимит всех запросов восстановления за 15 минут — 15 на аккаунт и 60 на IP
- *       500:
- *         description: Внутренняя ошибка сервера
+ *       410:
+ *         description: Восстановление по вопросу больше недоступно; пароль не изменяется
+ */
+
+/**
+ * @openapi
  * /api/auth/recAns:
  *   post:
- *     tags: [Authorization]
+ *     summary: Устаревшее восстановление отключено; обратитесь к менеджеру
+ *     deprecated: true
  *     security: []
- *     summary: Подтвердить ответ и получить одноразовое разрешение
- *     description: Новое разрешение отменяет предыдущее для этого пользователя. Секретный ответ не возвращается.
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [tg_id, secAns]
- *             properties:
- *               tg_id:
- *                 type: string
- *                 minLength: 1
- *                 maxLength: 255
- *               secAns:
- *                 type: string
- *                 minLength: 1
- *                 maxLength: 255
  *     responses:
- *       200:
- *         description: Разрешение на смену пароля сроком 5 минут
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 recoveryToken:
- *                   type: string
- *                   pattern: '^[a-f0-9]{64}$'
- *                 expiresIn:
- *                   type: integer
- *                   enum: [300]
- *       400:
- *         description: Некорректный запрос или пустой ответ
- *       403:
- *         description: Неверный ответ или восстановление недоступно
- *       429:
- *         description: Слишком много запросов восстановления
- *       503:
- *         description: Хранилище разрешений временно недоступно
- *       500:
- *         description: Внутренняя ошибка сервера
+ *       410:
+ *         description: Восстановление по вопросу больше недоступно; пароль не изменяется
+ */
+
+/**
+ * @openapi
  * /api/auth/recPass/newPass:
  *   post:
- *     tags: [Authorization]
+ *     summary: Устаревшее восстановление отключено; обратитесь к менеджеру
+ *     deprecated: true
  *     security: []
- *     summary: Установить новый пароль по одноразовому разрешению
- *     description: Разрешение привязано к пользователю, действует 5 минут и расходуется до записи в БД. После ошибки записи требуется повторное подтверждение. Перезапуск backend отменяет разрешения. Новый пароль сохраняется как scrypt-хеш без ограничения длины в символах; действует лимит JSON-запроса. Пароль и версия сессий обновляются атомарно; прежние JWT отзываются.
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [tg_id, textNewPassword, recoveryToken]
- *             properties:
- *               tg_id:
- *                 type: string
- *                 minLength: 1
- *                 maxLength: 255
- *               textNewPassword:
- *                 type: string
- *                 minLength: 1
- *               recoveryToken:
- *                 type: string
- *                 pattern: '^[a-f0-9]{64}$'
  *     responses:
- *       200:
- *         description: Пароль изменён; пароль и данные пользователя не возвращаются
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 success:
- *                   type: boolean
- *       400:
- *         description: Некорректный запрос или пустой пароль
- *       403:
- *         description: Отсутствующее, чужое, использованное или просроченное разрешение
- *       429:
- *         description: Слишком много запросов восстановления
- *       500:
- *         description: Ошибка сервера; требуется повторное подтверждение восстановления
+ *       410:
+ *         description: Восстановление по вопросу больше недоступно; пароль не изменяется
  */
 
 /**
@@ -364,11 +266,71 @@ router.delete("/delUser/:id", authenticate, requireManager, AuthController.delet
  *       500:
  *         description: Отзыв не подтверждён, безопасная ошибка сервера
  */
+/**
+ * @openapi
+ * /api/auth/change-password:
+ *   post:
+ *     summary: Сменить собственный пароль и отозвать прежние сессии
+ *     parameters:
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword, newPassword, confirmPassword]
+ *             properties:
+ *               currentPassword: { type: string, format: password }
+ *               newPassword: { type: string, format: password }
+ *               confirmPassword: { type: string, format: password }
+ *     responses:
+ *       200: { description: Пароль изменён; необходим повторный вход }
+ *       400: { description: Неверные поля или новый пароль совпадает с текущим }
+ *       401: { description: Недействительная сессия }
+ *       403: { description: Текущий пароль или CSRF не подтверждён }
+ *       409: { description: Проверенные данные доступа изменились }
+ *       429: { description: Превышено число попыток }
+ *       503: { description: Очередь scrypt заполнена }
+ * /api/auth/users/{id}/reset-password:
+ *   post:
+ *     summary: Менеджер задаёт новый пароль другому пользователю
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer, minimum: 1, maximum: 2147483647 }
+ *       - $ref: '#/components/parameters/SessionIdHeader'
+ *       - $ref: '#/components/parameters/CsrfHeader'
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword, newPassword, confirmPassword]
+ *             properties:
+ *               currentPassword: { type: string, format: password, description: Текущий пароль менеджера }
+ *               newPassword: { type: string, format: password }
+ *               confirmPassword: { type: string, format: password }
+ *     responses:
+ *       200: { description: Пароль установлен, прежние сессии отозваны }
+ *       400: { description: Неверные поля или попытка сбросить собственный пароль }
+ *       401: { description: Недействительная сессия }
+ *       403: { description: Недостаточно прав, неверный пароль менеджера или CSRF }
+ *       404: { description: Пользователь не найден }
+ *       409: { description: Проверенные данные доступа изменились }
+ *       429: { description: Превышено число попыток }
+ *       503: { description: Очередь scrypt заполнена }
+ */
+router.post('/change-password', authenticate, AuthController.changePassword);
+router.post('/users/:id/reset-password', authenticate, requireManager, AuthController.resetPassword);
 router.post("/logout", authenticate, AuthController.logout);
 router.post("/login", AuthController.loginUser);
 router.get("/protected", authenticate, AuthController.protected);
-router.post("/recPass", AuthController.recPass);
-router.post("/recAns", AuthController.recAns);
-router.post("/recPass/newPass", AuthController.newPass);
+router.post("/recPass", AuthController.recoveryUnavailable);
+router.post("/recAns", AuthController.recoveryUnavailable);
+router.post("/recPass/newPass", AuthController.recoveryUnavailable);
 
 module.exports = router;

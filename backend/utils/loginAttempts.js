@@ -21,4 +21,4 @@ function createLoginAttempts({ now = Date.now, windowMs = 15 * 60 * 1000, accoun
     };
 }
 
-module.exports = { createLoginAttempts, loginAttempts: createLoginAttempts() };
+module.exports = { createLoginAttempts, loginAttempts: createLoginAttempts(), passwordAttempts: createLoginAttempts() };

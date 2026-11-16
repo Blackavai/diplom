@@ -7,11 +7,13 @@ export interface AuthUser {
     tg_id: string;
     post: string;
     role: number;
+    passwordChangeRecommended?: boolean;
 }
 export type SessionStatus = 'checking' | 'authenticated' | 'anonymous' | 'error' | 'forbidden';
 interface AuthContextValue {
     user: AuthUser | null;
     completeLogin: () => void;
+    completePasswordChange: () => void;
     status: SessionStatus;
     isCheckingSession: boolean;
     sessionError: string | null;
