@@ -150,7 +150,7 @@ try {
     assert.equal(sent.body.text_report, '  Synthetic preserved report  ');
     assert.equal(sent.body.id_task, 77);
     assert.equal(sent.body.id_user, undefined);
-    assert.match(sent.body.end_date, /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(sent.body.end_date, /^\d{4}-\d{2}-\d{2}$/);
     assert.equal(sent.bearer,undefined);
     assert.match(sent.key,/^[a-f0-9-]{36}$/);
     pass('double click sends one request and locks report editing');

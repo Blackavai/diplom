@@ -173,10 +173,10 @@ test('task API contract on synthetic PostgreSQL', { skip: process.env.RECOVERY_T
         assert.deepEqual(await snapshot(), before);
     });
 
-    await t.test('future vacation and reversed task dates retain the previous rules', async () => {
+    await t.test('future vacation remains compatible with valid task dates', async () => {
         const recipient = await user();
         await pool.query('INSERT INTO vacation(id_user,start_holiday,end_holiday) VALUES ($1,CURRENT_DATE+10,CURRENT_DATE+11)', [recipient]);
-        const response = await create({ ...validCreate(), id_user: recipient, start_date: '2099-02-01', end_date: '2099-01-01' });
+        const response = await create({ ...validCreate(), id_user: recipient, start_date: '2099-01-01', end_date: '2099-02-01' });
         assert.equal(response.status, 200);
         assert.equal(response.data.checkVacation, false);
     });
@@ -284,9 +284,9 @@ test('task API contract on synthetic PostgreSQL', { skip: process.env.RECOVERY_T
         const logs = [];
         subtest.mock.method(console, 'error', (...args) => logs.push(args));
         const response = await remove(id);
-        assert.equal(response.status, 500);
-        assert.deepEqual(response.data, { error: 'Ошибка сервера' });
-        assert.deepEqual(logs, [['Ошибка удаления задачи']]);
+        assert.equal(response.status, 409);
+        assert.deepEqual(response.data, { message: 'Задача связана с отчётами и не может быть удалена' });
+        assert.deepEqual(logs, []);
         assert.deepEqual(await snapshot(), before);
     });
 

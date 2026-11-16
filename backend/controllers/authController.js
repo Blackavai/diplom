@@ -65,7 +65,12 @@ const AuthController = {
         res.locals.errorOperation = 'Ошибка удаления сотрудника';
         const id = positiveId(req.params.id);
         if (id === null) return res.status(400).json({ message: 'Некорректный идентификатор' });
-        const delUser = await AuthModel.delUser(id);
+        let delUser;
+        try { delUser = await AuthModel.delUser(id); }
+        catch (error) {
+            if (error.code === 'DELETE_HAS_DEPENDENCIES' || error.code === '23503') return res.status(409).json({ message: 'Сотрудник связан с задачами, отчётами, отпусками или командами и не может быть удалён' });
+            throw error;
+        }
         if (!delUser.rowCount) return res.status(404).json({ message: 'Пользователь не найден' });
         return res.status(201).json({ message: "Пользователь успешно удалён" });
     },

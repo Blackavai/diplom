@@ -78,3 +78,6 @@ CREATE TABLE request_idempotency (
     result jsonb,
     PRIMARY KEY (user_id, operation, request_key)
 );
+
+ALTER TABLE task_list ADD CONSTRAINT task_date_range CHECK (start_date <= end_date);
+ALTER TABLE vacation ADD CONSTRAINT vacation_date_range CHECK (start_holiday <= end_holiday);

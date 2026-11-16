@@ -123,35 +123,43 @@ router.post("/update/:id", requireManager, UserController.updateUserInfo);
  * /api/users/delete/{id}:
  *   get:
  *     tags: [Users]
- *     summary: Удалить пользователя
- *     description: Удаляет пользователя по его ID
+ *     summary: Старый GET удаления отключён
+ *     deprecated: true
+ *     description: Никогда не удаляет данные. Используйте DELETE по этому пути либо /api/auth/delUser/{id}.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       405:
+ *         description: Метод отключён, Allow DELETE
+ *   delete:
+ *     tags: [Users]
+ *     summary: Удалить сотрудника без зависимых данных
  *     parameters:
  *       - $ref: '#/components/parameters/SessionIdHeader'
  *       - $ref: '#/components/parameters/CsrfHeader'
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: integer
- *         description: ID пользователя
+ *         schema: { type: integer, minimum: 1, maximum: 2147483647 }
  *     responses:
  *       201:
- *         description: Пользователь успешно удалён
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
+ *         description: Сотрудник удалён
  *       400:
- *         description: Некорректный положительный id
+ *         description: Некорректный id
  *       404:
- *         description: Пользователь не найден
+ *         description: Сотрудник не найден
+ *       409:
+ *         description: Есть связанные задачи, отчёты, отпуска или команды; все записи сохранены
  *       500:
- *         description: Внутренняя ошибка сервера
+ *         description: Безопасная техническая ошибка
  */
-router.get("/delete/:id", requireManager, UserController.deleteUser);
+router.get("/delete/:id", requireManager, (req, res) => {
+    res.set('Allow', 'DELETE').status(405).json({ message: 'Для удаления используйте DELETE' });
+});
+router.delete("/delete/:id", requireManager, UserController.deleteUser);
 
 /**
  * @openapi
@@ -159,7 +167,7 @@ router.get("/delete/:id", requireManager, UserController.deleteUser);
  *   post:
  *     tags: [Users]
  *     summary: Создать отпуск для пользователя
- *     description: Проверяет положительный id, существование сотрудника и реальные YYYY-MM-DD/ISO даты. Порядок дат и часовые пояса остаются отдельным этапом. Возвращает сохранённую запись
+ *     description: Проверяет положительный id, существование сотрудника и реальные YYYY-MM-DD/ISO даты. Начало не позже окончания; календарные ответы YYYY-MM-DD, текущий день определяется по Europe/Moscow. Возвращает сохранённую запись
  *     parameters:
  *       - $ref: '#/components/parameters/SessionIdHeader'
  *       - $ref: '#/components/parameters/CsrfHeader'
@@ -206,11 +214,11 @@ router.get("/delete/:id", requireManager, UserController.deleteUser);
  *                       type: string
  *                     start_holiday:
  *                       type: string
- *                       format: date-time
+ *                       format: date
  *                       example: "2025-05-10"
  *                     end_holiday:
  *                       type: string
- *                       format: date-time
+ *                       format: date
  *                       example: "2025-06-01"
  *       400:
  *         description: Некорректные id или даты

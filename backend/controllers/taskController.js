@@ -1,7 +1,7 @@
 const TaskModel = require("../models/taskModel");
 const AuthModel = require('../models/authModel');
 const { positiveId } = require('../middleware/authMiddleware');
-const { isValidDateInput } = require('../utils/dateValidation');
+const { isValidDateRange } = require('../utils/dateValidation');
 const { isValidTaskContent, getTaskEndDate } = require('../utils/taskValidation');
 
 const TaskController = {
@@ -17,7 +17,7 @@ const TaskController = {
         res.locals.errorResponseField = 'error';
         const { content, id_user, end_date, start_date } = req.body || {};
         const userId = positiveId(id_user);
-        if (!isValidTaskContent(content) || userId === null || !isValidDateInput(start_date) || !isValidDateInput(end_date)) {
+        if (!isValidTaskContent(content) || userId === null || !isValidDateRange(start_date, end_date)) {
             return res.status(400).json({ message: 'Некорректные данные задачи' });
         }
         if (!await AuthModel.findUserById(userId)) return res.status(404).json({ message: 'Сотрудник не найден' });
@@ -61,7 +61,12 @@ const TaskController = {
         if (taskId === null || !isValidTaskContent(content) || typeof status !== 'boolean' || endDate === null) {
             return res.status(400).json({ message: 'Некорректные данные задачи' });
         }
-        const updatedTask = await TaskModel.updateTask(taskId, { content, end_date: endDate, status });
+        let updatedTask;
+        try { updatedTask = await TaskModel.updateTask(taskId, { content, end_date: endDate, status }); }
+        catch (error) {
+            if (error.code === 'INVALID_DATE_RANGE' || error.code === '23514') return res.status(400).json({ message: 'Срок задачи не может быть раньше начала' });
+            throw error;
+        }
         if (!updatedTask) return res.status(404).json({ error: 'Задача не найдена' });
         res.json(updatedTask);
     },
@@ -72,7 +77,12 @@ const TaskController = {
         const { id } = req.params;
         const taskId = positiveId(id);
         if (taskId === null) return res.status(400).json({ message: 'Некорректный идентификатор' });
-        const delTask = await TaskModel.deleteTask(taskId);
+        let delTask;
+        try { delTask = await TaskModel.deleteTask(taskId); }
+        catch (error) {
+            if (error.code === 'DELETE_HAS_DEPENDENCIES' || error.code === '23503') return res.status(409).json({ message: 'Задача связана с отчётами и не может быть удалена' });
+            throw error;
+        }
         if (!delTask || !delTask.rowCount) {
             return res.status(404).json({ error: "Задача не найдена" }); // "Task not found"
         }

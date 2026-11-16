@@ -23,7 +23,7 @@ test('safe API errors and controller logging on synthetic PostgreSQL', {
     const { apiNotFound, apiErrorHandler } = require('../middleware/errorMiddleware');
     const marker = 'synthetic-private-error-value';
     const privateError = () => Object.assign(new Error(marker), {
-        detail: marker, query: marker, parameters: [marker], code: '23503',
+        detail: marker, query: marker, parameters: [marker], code: 'XX000',
         body: { password: marker }, headers: { Authorization: marker }
     });
     const logs = [];
@@ -172,7 +172,7 @@ test('safe API errors and controller logging on synthetic PostgreSQL', {
     const cases = [
         ['list employees', UserModel, 'getAllUsers', 'GET', '/api/users', undefined, 'Ошибка загрузки сотрудников'],
         ['update employee', UserModel, 'updateUserInfo', 'POST', '/api/users/update/' + worker.id, employeeBody, 'Ошибка изменения сотрудника'],
-        ['legacy delete employee', UserModel, 'deleteUser', 'GET', '/api/users/delete/' + worker.id, undefined, 'Ошибка удаления сотрудника'],
+        ['legacy delete employee', UserModel, 'deleteUser', 'DELETE', '/api/users/delete/' + worker.id, undefined, 'Ошибка удаления сотрудника'],
         ['delete employee', AuthModel, 'delUser', 'DELETE', '/api/auth/delUser/' + worker.id, undefined, 'Ошибка удаления сотрудника'],
         ['create vacation', UserModel, 'vacUsers', 'POST', '/api/users/vacation/' + worker.id,
             { startHoliday: '2026-11-15', endHoliday: '2026-11-16' }, 'Ошибка создания отпуска'],
@@ -211,10 +211,10 @@ test('safe API errors and controller logging on synthetic PostgreSQL', {
         assert.deepEqual(await snapshot(), before);
     });
 
-    await t.test('real FK refusal preserves history and the existing 500 response', async () => {
+    await t.test('dependent employee deletion preserves history and returns conflict', async () => {
         const before = await snapshot();
-        assertSafe(await request('DELETE', '/api/auth/delUser/' + worker.id), 500, { message: 'Ошибка сервера' });
-        assert.deepEqual(logs, [['Ошибка удаления сотрудника']]);
+        assertSafe(await request('DELETE', '/api/auth/delUser/' + worker.id), 409, { message: 'Сотрудник связан с задачами, отчётами, отпусками или командами и не может быть удалён' });
+        assert.deepEqual(logs, []);
         assert.deepEqual(await snapshot(), before);
     });
 

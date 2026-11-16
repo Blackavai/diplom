@@ -15,6 +15,7 @@ import {Button} from "@/components/ui/button.tsx";
 import React, {useEffect, useState} from "react";
 import api, { apiErrorMessage } from '@/lib/api';
 import {Calendar28} from "@/pages/VacationList.tsx";
+import { calendarDate, businessDate } from '@/lib/dates';
 import { useNotification } from './Notification.tsx';
 import imgUsersNone from "@/assets/users_none.png";
 import { Badge } from "@/components/ui/badge"
@@ -31,12 +32,12 @@ export function DialogTask({ user, tasks, updateTasks }) {
     };
 
     const handleSubmit = () => {
-        const todayDay = new Date();
+        const todayDay = businessDate();
         if (taskContent && dateTask) {
             const newTask = {
                 content: taskContent,
                 id_user: user.id,
-                end_date: dateTask.toISOString(),
+                end_date: dateTask,
                 start_date: todayDay
             };
 
@@ -102,7 +103,7 @@ export function DialogTask({ user, tasks, updateTasks }) {
                     {isTyping && (
                         <Calendar28
                             plcHolder={"Срок задачи"}
-                            onChange={(date) => setDateTask(date)}
+                            onChange={(date: Date) => setDateTask(calendarDate(date))}
                         />
                     )}
                 </div>

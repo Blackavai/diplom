@@ -335,6 +335,8 @@ router.post("/createUser", authenticate, requireManager, AuthController.insertNe
  *         description: Некорректный идентификатор
  *       404:
  *         description: Пользователь не найден
+ *       409:
+ *         description: Сотрудник связан с задачами, отчётами, отпусками или командами; данные сохранены
  *       500:
  *         description: Безопасная ошибка, включая отказ зависимостей; политика истории остаётся отдельным этапом
  */

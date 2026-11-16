@@ -137,7 +137,7 @@ test('stage 13 cookies, CSRF, CRUD, idempotency and safe provisioning', {
             assert.equal((await request('POST','/users/vacation/'+worker.id,body,managerHeaders)).status,400);
         }
         assert.equal((await request('POST','/users/vacation/2147483647',{startHoliday:'2026-01-01',endHoliday:'2026-02-01'},managerHeaders)).status,404);
-        const created = await request('POST','/users/vacation/'+worker.id,{startHoliday:'2098-02-01T03:00:00Z',endHoliday:'2098-01-01'},managerHeaders);
+        const created = await request('POST','/users/vacation/'+worker.id,{startHoliday:'2098-02-01T03:00:00Z',endHoliday:'2098-03-01'},managerHeaders);
         assert.equal(created.status,201);
         assert.ok(created.data.user.id);
         assert.equal(Number(created.data.user.id_user),worker.id);
@@ -145,7 +145,7 @@ test('stage 13 cookies, CSRF, CRUD, idempotency and safe provisioning', {
         assert.equal(created.data.user.start_holiday.slice(0,10),'2098-02-01');
     });
     await t.test('both employee deletion routes distinguish invalid, missing and deleted rows', async () => {
-        for (const [method,prefix] of [['GET','/users/delete/'],['DELETE','/auth/delUser/']]) {
+        for (const [method,prefix] of [['DELETE','/users/delete/'],['DELETE','/auth/delUser/']]) {
             assert.equal((await request(method,prefix+'bad',undefined,managerHeaders)).status,400);
             assert.equal((await request(method,prefix+'2147483647',undefined,managerHeaders)).status,404);
             const user = await actor('stage13-delete-'+method,2);

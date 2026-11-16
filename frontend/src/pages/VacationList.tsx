@@ -1,3 +1,4 @@
+import { calendarDate, businessDate, displayDate } from '@/lib/dates';
 import '../style/vacation.css';
 import { Button } from "@/components/ui/button"
 import {
@@ -237,13 +238,13 @@ export function DialogAddVacation({ setRefresh }) {
                     <div>
                         <Calendar28
                             plcHolder={"Начало отпуска"}
-                            onChange={(date) => setStartDate(date)}
+                            onChange={(date: Date) => setStartDate(calendarDate(date))}
                         />
                     </div>
                     <div>
                         <Calendar28
                             plcHolder={"Конец отпуска"}
-                            onChange={(date) => setEndDate(date)}
+                            onChange={(date: Date) => setEndDate(calendarDate(date))}
                         />
                     </div>
                 </div>
@@ -275,12 +276,12 @@ function VacationList() {
     }, [refresh]); // Добавьте refresh в зависимости
 
     // Получаем текущую дату
-    const today = new Date();
+    const today = businessDate();
 
     // Фильтруем пользователей, оставляя только тех, у кого отпуск в будущем
     const upcomingUsers = users.filter(user => {
-        const startDate = new Date(user.end_holiday);
-        return startDate >= today; // Проверяем, начинается ли отпуск сегодня или позже
+        const startDate = user.end_holiday.slice(0, 10);
+        return startDate >= today; // Показываем отпуск включительно по последний день по Москве.
     });
 
     return (
@@ -297,18 +298,10 @@ function VacationList() {
                     </div>
                 ) : (
                     upcomingUsers.map(user => {
-                        const startDate = new Date(user.start_holiday);
-                        const endDate = new Date(user.end_holiday);
-                        const formattedStartDate = startDate.toLocaleDateString("ru-RU", {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit'
-                        });
-                        const formattedEndDate = endDate.toLocaleDateString("ru-RU", {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit'
-                        });
+                        const startDate = user.start_holiday;
+                        const endDate = user.end_holiday;
+                        const formattedStartDate = displayDate(startDate);
+                        const formattedEndDate = displayDate(endDate);
 
                         return (
                             <div className={'rowReport'} key={user.id}>

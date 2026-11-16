@@ -1,4 +1,5 @@
 const postgree = require("../db");
+const { businessDate } = require('../utils/dateValidation');
 
 const TaskModel = {
     getAllTasks: async () => {
@@ -16,21 +17,10 @@ const TaskModel = {
         return result.rows[0];
     },
     checkVacationUser: async (id_user) => {
-        const query = await postgree.query('SELECT start_holiday, end_holiday FROM vacation WHERE id_user = $1;', [id_user]);
-        const dateNow = new Date();
-        if (query.rows.length === 0) {
-            return false;
-        }
-
-        for (const vacation of query.rows) {
-            const startDate = new Date(vacation.start_holiday);
-            const endDate = new Date(vacation.end_holiday);
-            if (dateNow >= startDate && dateNow <= endDate) {
-                return true;
-            }
-        }
-
-        return false;
+        const result = await postgree.query(`SELECT EXISTS (
+            SELECT 1 FROM vacation WHERE id_user=$1 AND $2::date BETWEEN start_holiday AND end_holiday
+        ) AS on_vacation`, [id_user, businessDate()]);
+        return result.rows[0].on_vacation;
     },
     updateTask: async (id, updates) => {
         const { content, end_date, status  } = updates;
@@ -40,16 +30,35 @@ const TaskModel = {
             content = $1, 
             end_date = $2,
             status = $3
-        WHERE id = $4 
+        WHERE id = $4 AND start_date <= $2::date
         RETURNING *;
     `;
         const values = [content, end_date, status, id];
         const result = await postgree.query(query, values);
+        if (!result.rowCount && (await postgree.query('SELECT id FROM task_list WHERE id=$1', [id])).rowCount) {
+            const error = new Error('Срок задачи не может быть раньше начала');
+            error.code = 'INVALID_DATE_RANGE';
+            throw error;
+        }
         return result.rows[0];
     },
     deleteTask: async (id) => {
-        const result = await postgree.query("DELETE FROM task_list WHERE id = $1;", [id]);
-        return result;
+        const client = await postgree.connect();
+        try {
+            await client.query('BEGIN');
+            const task = await client.query('SELECT id FROM task_list WHERE id=$1 FOR UPDATE', [id]);
+            if (!task.rowCount) { await client.query('COMMIT'); return { rowCount: 0 }; }
+            const reports = await client.query('SELECT 1 FROM report_list WHERE id_task=$1 LIMIT 1', [id]);
+            if (reports.rowCount) {
+                const error = new Error('Задача связана с отчётами и не может быть удалена');
+                error.code = 'DELETE_HAS_DEPENDENCIES';
+                throw error;
+            }
+            const result = await client.query('DELETE FROM task_list WHERE id=$1', [id]);
+            await client.query('COMMIT');
+            return result;
+        } catch (error) { await client.query('ROLLBACK'); throw error; }
+        finally { client.release(); }
     }
 };
 

@@ -1,6 +1,6 @@
 const UsersModel = require("../models/userModel");
 const AuthModel = require('../models/authModel');
-const { isValidDateInput } = require('../utils/dateValidation');
+const { isValidDateRange } = require('../utils/dateValidation');
 const { positiveId } = require('../middleware/authMiddleware');
 const { isValidUserText } = require('../utils/userValidation');
 
@@ -31,7 +31,12 @@ const UsersController = {
         res.locals.errorOperation = 'Ошибка удаления сотрудника';
         const id = positiveId(req.params.id);
         if (id === null) return res.status(400).json({ message: 'Некорректный идентификатор' });
-        const delUser = await UsersModel.deleteUser(id);
+        let delUser;
+        try { delUser = await UsersModel.deleteUser(id); }
+        catch (error) {
+            if (error.code === 'DELETE_HAS_DEPENDENCIES' || error.code === '23503') return res.status(409).json({ message: 'Сотрудник связан с задачами, отчётами, отпусками или командами и не может быть удалён' });
+            throw error;
+        }
         if (!delUser) return res.status(404).json({ message: 'Пользователь не найден' });
         return res.status(201).json({ message: "Пользователь успешно удалён", user: delUser });
     },
@@ -40,7 +45,7 @@ const UsersController = {
         res.locals.errorOperation = 'Ошибка создания отпуска';
         const id = positiveId(req.params.id);
         const { startHoliday, endHoliday } = req.body || {};
-        if (id === null || !isValidDateInput(startHoliday) || !isValidDateInput(endHoliday)) {
+        if (id === null || !isValidDateRange(startHoliday, endHoliday)) {
             return res.status(400).json({ message: 'Некорректные данные отпуска' });
         }
         if (!await AuthModel.findUserById(id)) return res.status(404).json({ message: 'Пользователь не найден' });

@@ -16,4 +16,15 @@ function isValidDateInput(value) {
     return Number.isFinite(Date.parse(value));
 }
 
-module.exports = { isValidDateInput };
+function isValidDateRange(start, end) {
+    return isValidDateInput(start) && isValidDateInput(end) && start.slice(0, 10) <= end.slice(0, 10);
+}
+
+function businessDate(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Moscow',
+        year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+    const value = (name) => parts.find((part) => part.type === name).value;
+    return `${value('year').padStart(4, '0')}-${value('month')}-${value('day')}`;
+}
+
+module.exports = { isValidDateInput, isValidDateRange, businessDate };

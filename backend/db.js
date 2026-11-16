@@ -1,4 +1,6 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+// PostgreSQL DATE — календарный день, а не момент времени. TIMESTAMP не меняем.
+types.setTypeParser(1082, (value) => value);
 require('dotenv').config();
 
 if (process.env.APP_DB_USER && !process.env.APP_DB_PASSWORD) {

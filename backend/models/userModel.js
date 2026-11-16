@@ -1,5 +1,5 @@
 const postgree = require("../db");
-const e = require("express");
+const { businessDate } = require('../utils/dateValidation');
 
 const UserModel = {
   getAllUsers: async () => {
@@ -15,10 +15,27 @@ const UserModel = {
   },
 
   deleteUser: async  (id) => {
-      const query = 'DELETE FROM users WHERE id = $1 RETURNING id;';
-      const value = [id];
-      const result = await postgree.query(query, value);
-      return result.rows[0];
+      const client = await postgree.connect();
+      try {
+          await client.query('BEGIN');
+          const user = await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [id]);
+          if (!user.rowCount) { await client.query('COMMIT'); return null; }
+          const dependencies = await client.query(`SELECT EXISTS (
+              SELECT 1 FROM task_list WHERE id_user=$1 UNION ALL
+              SELECT 1 FROM report_list WHERE id_user=$1 UNION ALL
+              SELECT 1 FROM vacation WHERE id_user=$1 UNION ALL
+              SELECT 1 FROM teams WHERE id_user=$1
+          ) AS present`, [id]);
+          if (dependencies.rows[0].present) {
+              const error = new Error('Сотрудник связан с задачами, отчётами, отпусками или командами');
+              error.code = 'DELETE_HAS_DEPENDENCIES';
+              throw error;
+          }
+          const result = await client.query('DELETE FROM users WHERE id=$1 RETURNING id', [id]);
+          await client.query('COMMIT');
+          return result.rows[0];
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
   },
 
   vacUsers: async (id_user, startHoliday, endHoliday) => {
@@ -60,8 +77,8 @@ const UserModel = {
             `SELECT start_holiday, end_holiday 
          FROM vacation 
          WHERE id_user = $1 
-         AND CURRENT_DATE BETWEEN start_holiday AND end_holiday;`,
-            [id_user]
+         AND $2::date BETWEEN start_holiday AND end_holiday;`,
+            [id_user, businessDate()]
         );
 
         if (result.rows.length === 0) {

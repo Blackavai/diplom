@@ -1,3 +1,4 @@
+import { displayDate } from '@/lib/dates';
 import '../style/report.css';
 import arrow from '../assets/right-arrow-upd.png';
 import { Button } from "@/components/ui/button"
@@ -144,11 +145,7 @@ function ReportsList() {
                         </div>
                     ) : (
                         filteredReports.map(report => {
-                            const formattedDate = new Date(report.end_date).toLocaleDateString("ru-RU", {
-                                year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit'
-                        });
+                            const formattedDate = displayDate(report.end_date);
 
                         return (
                             <div className={'rowReport'} key={report.id}>

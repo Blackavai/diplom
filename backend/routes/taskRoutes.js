@@ -26,12 +26,12 @@ router.use(authenticate, requireManager);
  *           example: "5"
  *         start_date:
  *           type: string
- *           format: date-time
+ *           format: date
  *           description: Прежняя JSON-сериализация DATE через pg/Date; общий date-only контракт вводится отдельно.
  *           example: "2026-11-16T00:00:00.000Z"
  *         end_date:
  *           type: string
- *           format: date-time
+ *           format: date
  *           example: "2026-11-17T00:00:00.000Z"
  *         status:
  *           type: boolean
@@ -208,7 +208,7 @@ router.post("/new", TaskController.addNewTask);
  *             schema:
  *               $ref: '#/components/schemas/Task'
  *       400:
- *         description: Неверные или неполные данные; конфликт end_date/date
+ *         description: Неверные или неполные данные; конфликт end_date/date либо окончание раньше начала
  *       401:
  *         description: Требуется авторизация
  *       403:
@@ -277,6 +277,8 @@ router.put("/update/:id", TaskController.updateTaskContent);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/TaskError'
+ *       409:
+ *         description: Задача связана с отчётами; история сохранена
  *       500:
  *         description: Ошибка сервера; прежний отказ удаления зависимой задачи сохранён
  *         content:

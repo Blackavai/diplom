@@ -1,3 +1,4 @@
+import { displayDate } from '@/lib/dates';
 import '../style/user.css';
 import {
     Dialog,
@@ -75,10 +76,7 @@ export function DialogDemo({ user, onDelete }: { user: UserSummary; onDelete: (i
             });
     }, [user.id]);
 
-    const formatDate = (dateString) => {
-        const options = { year: 'numeric', month: 'numeric', day: 'numeric' };
-        return new Date(dateString).toLocaleDateString(undefined, options);
-    };
+
 
     const handleDelete = () => {
         onDelete(user.id); // Call the delete function passed from User component
@@ -108,7 +106,7 @@ export function DialogDemo({ user, onDelete }: { user: UserSummary; onDelete: (i
                         <p>Команда: {CheckTeam.user}</p>
                     </div>
                     <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <p>Отпуск: {CheckVac.start_holiday && CheckVac.end_holiday ? `${formatDate(CheckVac.start_holiday)} - ${formatDate(CheckVac.end_holiday)}` : "Отсутсвует"}</p>
+                        <p>Отпуск: {CheckVac.start_holiday && CheckVac.end_holiday ? `${displayDate(CheckVac.start_holiday)} - ${displayDate(CheckVac.end_holiday)}` : "Отсутсвует"}</p>
                     </div>
                     <div className="grid grid-cols-1 items-center gap-4 hrTitle">
                         <p>Задач стоит: {CheckTask.length}</p>
@@ -342,7 +340,8 @@ function User() {
             addNotification('success', 'Сотрудник удалён из системы');
 
         } catch (error) {
-            addNotification('error', 'Ошибка удаления сотрудника');
+            addNotification('error', axios.isAxiosError<{ message?: string }>(error) && error.response?.status === 409
+                ? error.response.data.message || 'Сотрудник связан с другими данными' : 'Ошибка удаления сотрудника');
         }
     };
 

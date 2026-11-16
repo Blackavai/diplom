@@ -1,4 +1,5 @@
 const postgree = require('../db');
+const UserModel = require('./userModel');
 const { isNonEmptyString, answersMatch } = require('../utils/passwordRecovery');
 
 const AuthModel = {
@@ -28,8 +29,8 @@ const AuthModel = {
         return res.rows[0];
     },
     delUser: async (id_user) => {
-        const result = await postgree.query("DELETE FROM users WHERE id = $1;", [id_user]);
-        return result;
+        const user = await UserModel.deleteUser(id_user);
+        return { rowCount: user ? 1 : 0 };
     },
     findUserByTGid: async (tg_id) => { // Исправлено на TG_ID
         const query = 'SELECT * FROM users WHERE tg_id = $1';

@@ -246,7 +246,7 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
         assert.equal((await request('DELETE', `/api/teams/delete/${teamId}`, manager)).status, 200);
         assert.equal((await request('DELETE', `/api/auth/delUser/${id}`, manager)).status, 201);
         const disposable = await user();
-        assert.equal((await request('GET', `/api/users/delete/${disposable.id}`, manager)).status, 201);
+        assert.equal((await request('DELETE', `/api/users/delete/${disposable.id}`, manager)).status, 201);
         assert.equal((await request('POST', `/api/users/vacation/${other.id}`, manager, { startHoliday: '2098-01-01', endHoliday: '2098-01-02' })).status, 201);
         assert.equal((await request('GET', '/api/users/vacation/view', manager)).status, 201);
         const reports = await request('GET', '/api/reports', manager);

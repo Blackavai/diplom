@@ -17,6 +17,7 @@ import { isAxiosError } from 'axios';
 import api, { apiErrorMessage } from '@/lib/api';
 import { useNotification } from './Notification.tsx';
 import { useAuth } from './AuthContext.tsx';
+import { businessDate, displayDate } from '@/lib/dates';
 import { createRequestKey } from '@/lib/requestKey';
 
 interface TaskSummary {
@@ -69,7 +70,7 @@ export function DialogTask({ task, onReported, onRefresh }: DialogTaskProps) {
         setReportError(null);
         try {
             if (!submission.current || submission.current.text !== reportContent) {
-                submission.current = { key: createRequestKey(), text: reportContent, date: new Date().toISOString() };
+                submission.current = { key: createRequestKey(), text: reportContent, date: businessDate() };
             }
             await api.post('/reports/new', {
                 id_task: task.id,
@@ -220,11 +221,7 @@ function TasksEmploye() {
                         </div>
                     )}
                     {tasksData.map((task) => {
-                        const formattedDate = new Date(task.end_date).toLocaleDateString("ru-RU", {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit'
-                        });
+                        const formattedDate = displayDate(task.end_date);
                         return (
                             <div className="rowUserTask" key={task.id}>
                                 <div className="divUser1 relative">
