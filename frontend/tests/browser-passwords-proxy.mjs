@@ -77,7 +77,7 @@ try {
     await call('Page.navigate', { url: origin + '/login' });
     await login('browser-password-worker-' + label, 'synthetic-proxy-password', '/tasks');
     await until("document.body.innerText.includes('Рекомендуем сменить пароль')");
-    await evaluate("document.querySelector('.item_auth a[href=\"/change-password\"]').click()");
+    await evaluate("document.querySelector('.item_auth a[href=\"/settings\"]').click()");
     await until("document.querySelectorAll('.password-form input').length===3");
     await passwords('synthetic-proxy-password', 'synthetic-personal-password');
     await until("location.pathname==='/login'");

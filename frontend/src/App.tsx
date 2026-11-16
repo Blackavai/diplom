@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import Header from './pages/Header.tsx';
 import ChangePasswordPage from './pages/ChangePasswordPage';
+import SettingsPage from './pages/SettingsPage';
 import User from './pages/users.tsx';
 import LoginPage from './pages/LoginPage.tsx';
 import Teams from './pages/Teams.tsx';
@@ -31,6 +32,7 @@ const App = () => {
                     </Route>
                     <Route path="/tasks" element={<TasksEmploye />} />
                     <Route path="/change-password" element={<ChangePasswordPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
                 </Route>
                 <Route path="*" element={
                     <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center'}}>

@@ -127,7 +127,7 @@ try {
     assert.equal(await evaluate("document.querySelector('input[placeholder=Пароль]').value"), '');
     await navigate('/tasks');
     assert.equal(await evaluate("document.body.innerText.includes('Рекомендуем сменить пароль')"), false);
-    assert.equal(await evaluate("Boolean(document.querySelector('a[href=\"/change-password\"]'))"), true);
+    assert.equal(await evaluate("Boolean(document.querySelector('a[href=\"/settings\"]'))"), true);
     pass('successful change clears local session and fields; the next session has no recommendation');
 
     await navigate('/change-password'); await fillPasswords('Old synthetic', 'New synthetic'); await submit();

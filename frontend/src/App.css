@@ -143,5 +143,16 @@ input[class]:focus-visible, textarea[class]:focus-visible {
 .password-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
 .password-actions button { white-space: normal; height: auto; min-height: 2.5rem; }
 .password-notice { margin: 1rem; padding: .75rem; background: #fff5d6; border-radius: .5rem; }
-.password-notice a, .password-link { text-decoration: underline; }
-.item_auth .password-link { flex-shrink: 0; max-width: 6rem; white-space: normal; font-size: .75rem; line-height: 1.25; }
+.password-notice a { text-decoration: underline; }
+
+/* Настройки читают собственные данные сессии; поля профиля не редактируются. */
+.settings-page h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; }
+.settings-page h2 { font-size: 1.125rem; font-weight: 700; margin-bottom: .75rem; }
+.settings-profile { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.settings-profile > div { min-width: 0; overflow-wrap: anywhere; }
+.settings-profile dt { color: #555; font-size: .875rem; }
+.settings-profile dd { margin: .25rem 0 0; }
+.settings-password { border-top: 1px solid #ddd; margin-top: 1.5rem; padding-top: 1.5rem; }
+@media (max-width: 480px) {
+  .settings-profile { grid-template-columns: minmax(0, 1fr); }
+}

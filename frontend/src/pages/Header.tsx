@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import '../style/header.css';
 import { NavLink } from 'react-router-dom';
+import { Settings } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from './auth-context';
 
@@ -46,7 +47,9 @@ function Header() {
                     <div className="border_block item_auth">
                         {user && <>
                             <span title={user.fname + ' ' + user.lname}>{user.fname} {user.lname}</span>
-                            <NavLink className="password-link" to="/change-password">Сменить пароль</NavLink>
+                            <NavLink className="settings-link" to="/settings" aria-label="Личные настройки" title="Личные настройки">
+                                <Settings size={24} aria-hidden="true" />
+                            </NavLink>
                             <button type="button" aria-label="Выйти" className="logout-button btnInteractive" onClick={handleLogout}>
                                 <img src="/exitButton.png" alt="Выход" />
                             </button>
@@ -59,14 +62,16 @@ function Header() {
                     </DialogTrigger>
                 </div>
             </div>
-            <DialogContent className="sidebar">
+            <DialogContent className="sidebar translate-x-0 translate-y-0">
                 <DialogTitle className="sr-only">Навигация</DialogTitle>
                 <nav aria-label="Мобильная навигация">
                     {isAdmin && <NavigationLinks onClick={() => setIsSidebarOpen(false)} />}
                 </nav>
                 {user && <div className="item_auth_sidebar">
                     <span>{user.fname} {user.lname}</span>
-                    <NavLink className="password-link" to="/change-password" onClick={() => setIsSidebarOpen(false)}>Сменить пароль</NavLink>
+                    <NavLink className="settings-link" to="/settings" aria-label="Личные настройки" title="Личные настройки" onClick={() => setIsSidebarOpen(false)}>
+                        <Settings size={24} aria-hidden="true" />
+                    </NavLink>
                     <button type="button" aria-label="Выйти" className="logout-button btnInteractive" onClick={handleLogout}>
                         <img src="/exitButton.png" alt="Выход" />
                     </button>

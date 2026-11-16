@@ -92,6 +92,9 @@ try {
     await call('Page.enable'); await call('Runtime.enable'); await call('Network.enable');
     await call('Network.setBlockedURLs', { urls: ['https://*'] });
     await call('Fetch.enable', { patterns: [{ urlPattern: origin + '/api/*', requestStage: 'Request' }] });
+    await call('Page.navigate', { url: origin + '/login' });
+    await until("Boolean(document.querySelector('input[placeholder=Логин]'))");
+    await evaluate("localStorage.removeItem('dailysync.session-event')");
     for (const [width, height] of mode === '--components' ? [] : [[360, 740], [390, 844], [768, 1024], [1024, 768], [1280, 800], [1920, 1080], [640, 400]]) {
         await viewport(width, height);
         for (const [path, selector] of routes) {

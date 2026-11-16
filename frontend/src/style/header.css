@@ -199,3 +199,15 @@
 .item_auth span { min-width: 0; margin-right: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: auto; }
 .logout-button { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 44px; height: 44px; cursor: pointer; }
 .logout-button img { max-width: 32px; height: auto; }
+
+.settings-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+}
+.item_auth .settings-link { flex: 0 0 44px; margin-right: 0; }
+.settings-link:hover, .settings-link.active { background-color: rgba(255, 255, 255, .6); }
