@@ -54,8 +54,32 @@ async function main() {
             assert.equal((await (await request(`/api/teams/view/${id}`, 'GET', undefined, token)).json()).view.length, 1);
             assert.equal((await request(`/api/teams/delete/${id}`, 'DELETE', undefined, token)).status, 200);
             assert.equal((await request(`/api/teams/delete/${id}`, 'DELETE', undefined, token)).status, 404);
-            const task = (await pool.query(`INSERT INTO task_list(content,id_user,start_date,end_date,status)
-                VALUES ('Proxy report smoke',$1,'2026-01-01','2099-01-01',false) RETURNING id`, [actor.id])).rows[0];
+            const taskPayload = { content: 'Proxy task smoke', id_user: actor.id,
+                start_date: '2026-01-01T12:00:00.000Z', end_date: '2099-01-01T00:00:00.000Z' };
+            const taskCreated = await request('/api/tasks/new', 'POST', taskPayload, token);
+            assert.equal(taskCreated.status, 200);
+            const createdTaskBody = await taskCreated.json();
+            assert.equal(createdTaskBody.checkVacation, false);
+            const task = createdTaskBody.task;
+            assert.ok(task.id > 0);
+            assert.equal(Number(task.id_user), actor.id);
+            assert.equal(task.status, false);
+            for (const dates of [{ end_date: '2099-01-02' }, { date: '2099-01-03T00:00:00Z' }]) {
+                const changed = await request(`/api/tasks/update/${task.id}`, 'PUT', { content: 'Proxy updated task', status: false, ...dates }, token);
+                assert.equal(changed.status, 200);
+                assert.equal((await changed.json()).id, task.id);
+            }
+            assert.equal((await request(`/api/tasks/update/${task.id}`, 'PUT', { content: 'Conflict', status: false,
+                end_date: '2099-01-04', date: '2099-01-05' }, token)).status, 400);
+            assert.equal((await request('/api/tasks/update/2147483647', 'PUT', { content: 'Missing', status: false, end_date: '2099-01-01' }, token)).status, 404);
+            assert.equal((await request('/api/tasks/delete/2147483647', 'DELETE', undefined, token)).status, 404);
+            const disposableTask = await request('/api/tasks/new', 'POST', { ...taskPayload, content: 'Proxy disposable task' }, token);
+            assert.equal(disposableTask.status, 200);
+            const disposableId = (await disposableTask.json()).task.id;
+            const deletedTask = await request(`/api/tasks/delete/${disposableId}`, 'DELETE', undefined, token);
+            assert.equal(deletedTask.status, 200);
+            assert.equal((await deletedTask.json()).task.rowCount, 1);
+            assert.equal((await request(`/api/tasks/delete/${disposableId}`, 'DELETE', undefined, token)).status, 404);
             const reportBody = { id_task: task.id, text_report: '😀'.repeat(255), end_date: '2026-11-15T00:00:00+03:00' };
             assert.equal((await request('/api/reports/new', 'POST', { ...reportBody, end_date: '2026-02-30' }, token)).status, 400);
             assert.equal((await request('/api/reports/new', 'POST', reportBody, token)).status, 200);
@@ -95,7 +119,7 @@ async function main() {
             await pool.query('UPDATE users SET role=1 WHERE id=$1', [actor.id]);
             assert.equal((await request('/api/auth/logout', 'POST', {}, token)).status, 200);
             assert.equal((await request('/api/auth/protected', 'GET', undefined, token)).status, 401);
-            console.log(`PASS proxy: ${label} SPA, login/cookie/Bearer, CRUD, report completion, recovery, Swagger, logout/revocation, JSON 400/401/403/404/413/415`);
+            console.log(`PASS proxy: ${label} SPA, login/cookie/Bearer, task CRUD/end_date/date/404, report completion, recovery, Swagger, logout/revocation, JSON 400/401/403/404/413/415`);
         }
         // Both proxies share the existing per-account limiter; forged XFF cannot reset it.
         for (let index = 0; index < 12; index++) {

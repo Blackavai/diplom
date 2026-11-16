@@ -10,7 +10,7 @@ const TaskModel = {
         // return result.rows[0];
     },
     addNewTasks: async (content, id_user, end_date, start_date) => {
-        const query = 'INSERT INTO task_list(content, id_user, end_date, status, start_date) VALUES ($1, $2, $3, false, $4);';
+        const query = 'INSERT INTO task_list(content, id_user, end_date, status, start_date) VALUES ($1, $2, $3, false, $4) RETURNING id, content, id_user, start_date, end_date, status;';
         const values = [content, id_user, end_date, start_date];
         const result = await postgree.query(query, values);
         return result.rows[0];
@@ -33,7 +33,7 @@ const TaskModel = {
         return false;
     },
     updateTask: async (id, updates) => {
-        const { content, date, status  } = updates;
+        const { content, end_date, status  } = updates;
         const query = `
         UPDATE task_list 
         SET 
@@ -43,7 +43,7 @@ const TaskModel = {
         WHERE id = $4 
         RETURNING *;
     `;
-        const values = [content, date, status, id];
+        const values = [content, end_date, status, id];
         const result = await postgree.query(query, values);
         return result.rows[0];
     },
