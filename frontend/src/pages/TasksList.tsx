@@ -83,8 +83,8 @@ export function DialogTask({ user, tasks, status, onRefresh, onCreated }: Dialog
     }
 
     return <Dialog open={open} onOpenChange={(value) => { if (!busy.current) setOpen(value); }}>
-        <DialogTrigger asChild><img src={arrow} alt="arrow right" width="60px" className="box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) arrowAnim" /></DialogTrigger>
-        <DialogContent className="sm:max-w-[40%] p-15">
+        <DialogTrigger asChild><button type="button" className="row-action" aria-label="Открыть карточку"><img src={arrow} alt="arrow right" width="60px" className="box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) arrowAnim" /></button></DialogTrigger>
+        <DialogContent className="sm:max-w-2xl p-6 sm:p-10">
             <DialogHeader><DialogTitle>Меню задач</DialogTitle></DialogHeader>
             <div className="grid gap-4 py-4">
                 <div className="grid-cols-1 items-center gap-4 hrTitle"><p>Сотрудник: {user.fname} {user.lname}</p></div>
@@ -102,7 +102,7 @@ export function DialogTask({ user, tasks, status, onRefresh, onCreated }: Dialog
                         value={taskContent} disabled={pending || uncertain} onChange={(event) => { setTaskContent(event.target.value); setError(null); }} />
                 </div>
                 {taskContent.length > 0 && <Calendar28 plcHolder="Срок задачи" initialDate={dateTask} disabled={pending || uncertain}
-                    onChange={(date: Date) => setDateTask(calendarDate(date))} />}
+                    onChange={(date) => setDateTask(date ? calendarDate(date) : '')} />}
                 {error && <p role="alert">{error}</p>}
                 {uncertain && <Button type="button" onClick={refreshTasks} disabled={status === 'loading'}>Обновить список задач</Button>}
             </div>
@@ -199,7 +199,7 @@ function TasksList() {
         <div className="columnUser">
             {!loading && !listError && filteredUsers.length === 0 && <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}><img src={imgUsersNone} alt="Сотрудников нет" width="600" /></div>}
             {filteredUsers.map((user) => <div className="rowUserTask" key={user.id}>
-                <div className="divUser1 relative"><p className="nameUser" id="nameUser">{user.fname} {user.lname}
+                <div className="divUser1 relative"><p className="nameUser">{user.fname} {user.lname}
                     {detailsStatus[user.id] === 'ready' && vacationStatus[user.id] !== 'Отсутствует' && <Badge className="absolute h-4 badgeVacUser"><span>В отпуске</span></Badge>}
                 </p></div>
                 <div className="divUser2"><p>Задач: {taskLists[user.id] ? taskLists[user.id].length : '—'}</p>

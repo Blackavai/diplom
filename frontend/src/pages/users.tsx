@@ -87,8 +87,8 @@ export function DialogDemo({ user, onDelete }: { user: UserSummary; onDelete: (i
     const vacationText = vacation && typeof vacation === 'object'
         ? `${displayDate(vacation.start_holiday)} - ${displayDate(vacation.end_holiday)}` : vacation || '—';
     return <Dialog open={open} onOpenChange={(value) => { if (!busy.current) setOpen(value); }}>
-        <DialogTrigger asChild><img src={pencil} alt="arrow right" width="60px" className="box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) pencilAnim " /></DialogTrigger>
-        <DialogContent className="sm:max-w-[40%] p-15">
+        <DialogTrigger asChild><button type="button" className="row-action" aria-label="Открыть карточку"><img src={pencil} alt="arrow right" width="60px" className="box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) pencilAnim " /></button></DialogTrigger>
+        <DialogContent className="sm:max-w-2xl p-6 sm:p-10">
             <DialogHeader><DialogTitle>Меню сотрудника</DialogTitle></DialogHeader>
             <div className="grid gap-4 py-4">
                 <div className="grid-cols-1 items-center gap-4 hrTitle"><p>{user.fname} {user.lname}</p></div>
@@ -177,15 +177,15 @@ export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) =>
     return (
         <Dialog>
             <DialogTrigger asChild>
-                <button type={'button'} className={'addUser'}></button>
+                <button type={'button'} className={'addUser'} aria-label="Добавить сотрудника"></button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[40%] p-15">
+            <DialogContent className="sm:max-w-2xl p-6 sm:p-10">
                 <DialogHeader>
                     <DialogTitle>Меню добавления сотрудника</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-5 py-4">
                     <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <Label htmlFor="username" className="text-right ">
+                        <Label className="text-right ">
                             Имя:
                             <input
                                 disabled={pending}
@@ -198,7 +198,7 @@ export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) =>
                         </Label>
                     </div>
                     <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <Label htmlFor="username" className="text-right ">
+                        <Label className="text-right ">
                             Фамилия:
                             <input
                                 disabled={pending}
@@ -211,7 +211,7 @@ export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) =>
                         </Label>
                     </div>
                     <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <Label htmlFor="username" className="text-right ">
+                        <Label className="text-right ">
                             TG_id:
                             <input
                                 disabled={pending}
@@ -224,7 +224,7 @@ export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) =>
                         </Label>
                     </div>
                     <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <Label htmlFor="username" className="text-right ">
+                        <Label className="text-right ">
                             Пароль:
                             <input
                                 disabled={pending}
@@ -237,8 +237,8 @@ export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) =>
                         </Label>
                     </div>
                     <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <Label htmlFor="username" className="text-right ">
-                            Роль:
+                        <Label className="text-right ">
+                            Должность:
                             <input
                                 disabled={pending}
                                 type="text"
@@ -250,8 +250,8 @@ export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) =>
                         </Label>
                     </div>
                     <div className="grid grid-cols-1 items-center gap-4 hrTitle">
-                        <Label htmlFor="username" className="text-right ">
-                            Должность:
+                        <Label className="text-right ">
+                            Роль:
                             <Select value={roleText} disabled={pending} onValueChange={(value) => {
                                 setRoleText(value);
 
@@ -340,6 +340,13 @@ function User() {
 
         } catch (error) {
             if (!mounted.current) return false;
+            if (axios.isAxiosError(error) && error.response?.status === 404) {
+                requestVersion.current++;
+                setLoading(false);
+                setData((current) => current.filter((user) => user.id !== userId));
+                addNotification('success', 'Сотрудник уже отсутствует в списке');
+                return true;
+            }
             if (axios.isAxiosError(error) && !error.response) setListError('Результат удаления не подтверждён. Обновите список сотрудников.');
             addNotification('error', apiResponseMessage(error, 'Не удалось подтвердить удаление сотрудника.'));
             return false;
@@ -383,7 +390,7 @@ function User() {
                         filteredUsers.map(user => (
                             <div className={'rowUser'} key={user.id}>
                                 <div className={'divUser1'}>
-                                    <p className={'nameUser'} id={'nameUser'}>{user.fname} {user.lname}</p>
+                                    <p className={'nameUser'}>{user.fname} {user.lname}</p>
                                 </div>
                                 <div className={'divUser2'}>
                                     <p>{user.post}</p>

@@ -46,7 +46,7 @@ const UserModel = {
   },
 
   allVacUsers: async() => {
-      const result = await postgree.query('SELECT fname, lname, start_holiday, end_holiday FROM vacation INNER JOIN users ON vacation.id_user = users.id;');
+      const result = await postgree.query('SELECT vacation.id, fname, lname, start_holiday, end_holiday FROM vacation INNER JOIN users ON vacation.id_user = users.id;');
       return result.rows;
   },
 

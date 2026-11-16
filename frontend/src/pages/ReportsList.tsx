@@ -38,8 +38,8 @@ export function DialogReport({ userReport, onAccepted }: DialogReportProps) {
         } finally { busy.current = false; if (active.current) setPending(false); }
     }
     return <Dialog open={open} onOpenChange={(value) => { if (!busy.current) setOpen(value); }}>
-        <DialogTrigger asChild><img src={arrow} alt="arrow right" width="60px" className="box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) arrowAnim" /></DialogTrigger>
-        <DialogContent className="sm:max-w-[40%] p-15">
+        <DialogTrigger asChild><button type="button" className="row-action" aria-label="Открыть карточку"><img src={arrow} alt="arrow right" width="60px" className="box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) arrowAnim" /></button></DialogTrigger>
+        <DialogContent className="sm:max-w-2xl p-6 sm:p-10">
             <DialogHeader><DialogTitle>Меню отчётов</DialogTitle></DialogHeader>
             <div className="grid gap-5 py-10">
                 <div className="grid grid-cols-4 items-center gap-4 hrTitle"><p id="name" className="col-span-full">Отчитывающийся: {userReport.fname} {userReport.lname}</p></div>
@@ -108,7 +108,7 @@ function ReportsList() {
         <div className="columnReport">
             {!loading && !error && filtered.length === 0 && <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}><img src={imgReportNone} alt="Отчётов нет" width="600" /></div>}
             {filtered.map((report) => <div className="rowReport" key={report.id}>
-                <p className="nameReport" id="nameReport">{report.fname} {report.lname}</p><p>{displayDate(report.end_date)}</p>
+                <p className="nameReport">{report.fname} {report.lname}</p><p>{displayDate(report.end_date)}</p>
                 <DialogReport userReport={report} onAccepted={handleAccepted} />
             </div>)}
         </div>

@@ -114,9 +114,9 @@ export function DialogTask({ task, onReported, onRefresh }: DialogTaskProps) {
     return (
         <Dialog>
             <DialogTrigger asChild>
-                <img src={arrow} alt="arrow right" width="60px" className="box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) arrowAnim"/>
+                <button type="button" className="row-action" aria-label="Открыть карточку"><img src={arrow} alt="arrow right" width="60px" className="box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) arrowAnim"/></button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[40%] p-15">
+            <DialogContent className="sm:max-w-2xl p-6 sm:p-10">
                 <DialogHeader>
                     <DialogTitle>Меню задач</DialogTitle>
                 </DialogHeader>

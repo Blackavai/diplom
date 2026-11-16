@@ -18,6 +18,7 @@ export interface VacationPeriod {
 }
 
 export interface VacationRecord extends VacationPeriod {
+    id: number;
     fname: string;
     lname: string;
 }

@@ -1,4 +1,4 @@
-import { calendarDate, businessDate, displayDate } from '@/lib/dates';
+import { calendarDate, businessDate, displayDate, parseCalendarInput } from '@/lib/dates';
 import '../style/vacation.css';
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +16,7 @@ import api, { apiErrorMessage, apiResponseMessage } from '@/lib/api';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarIcon } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
+import { ru } from 'react-day-picker/locale';
 import {
     Command,
     CommandEmpty,
@@ -38,47 +39,40 @@ function formatDate(date: Date | undefined) {
     if (!date) {
         return ""
     }
-    return date.toLocaleDateString("ru-RU", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-    })
+    return calendarDate(date).split('-').reverse().join('.');
 }
-function isValidDate(date: Date | undefined) {
-    if (!date) {
-        return false
-    }
-    return !isNaN(date.getTime())
-}
-interface CalendarProps { plcHolder: string; onChange: (date: Date) => void; disabled?: boolean; initialDate?: string }
+interface CalendarProps { plcHolder: string; onChange: (date: Date | undefined) => void; disabled?: boolean; initialDate?: string }
 export function Calendar28({ plcHolder, onChange, disabled = false, initialDate }: CalendarProps) {
     const [open, setOpen] = React.useState(false);
-    const [date, setDate] = React.useState<Date | undefined>(() => initialDate ? new Date(initialDate + 'T00:00:00') : undefined);
+    const [date, setDate] = React.useState<Date | undefined>(() => parseCalendarInput(initialDate || ''));
     const [month, setMonth] = React.useState<Date | undefined>(date);
     const [value, setValue] = React.useState(formatDate(date));
 
-    useEffect(() => {
-        if (date) {
-            setValue(formatDate(date));
-            onChange(date); // Call the onChange prop to notify parent of the date change
-        }
-    }, [date, onChange]);
+    const inputId = React.useId();
+    const invalid = value.length > 0 && !date;
 
     return (
         <div className="flex flex-col gap-3">
             <div className="relative flex gap-2">
                 <input
-                    id="date"
+                    id={inputId}
+                    aria-label={plcHolder}
+                    aria-invalid={invalid}
+                    aria-describedby={invalid ? inputId + '-error' : undefined}
+                    inputMode="text"
+                    maxLength={10}
                     disabled={disabled}
                     value={value}
                     placeholder={plcHolder}
-                    className="col-span-3 outlineFocus hrTitle rounded-none focus:shadow-none w-full"
+                    className="col-span-3 outlineFocus hrTitle rounded-none focus:shadow-none w-full pr-10"
                     onChange={(e) => {
-                        const date = new Date(e.target.value);
-                        if (isValidDate(date)) {
-                            setDate(date);
-                            setMonth(date);
-                        }
+                        const text = e.target.value;
+                        const parsed = parseCalendarInput(text);
+                        setValue(text);
+                        setDate(parsed);
+                        if (parsed) setMonth(parsed);
+                        // Очистка и неполный ввод сбрасывают прежнюю дату родительской формы.
+                        onChange(parsed);
                     }}
                     onKeyDown={(e) => {
                         if (e.key === "ArrowDown") {
@@ -90,21 +84,23 @@ export function Calendar28({ plcHolder, onChange, disabled = false, initialDate 
                 <Popover open={open} onOpenChange={(value) => { if (!disabled) setOpen(value); }}>
                     <PopoverTrigger asChild>
                         <Button
-                            id="date-picker"
+                            type="button"
+                            aria-label={'Открыть календарь: ' + plcHolder}
                             disabled={disabled}
                             variant="ghost"
-                            className="absolute top-1/2 right-2 size-6 -translate-y-1/2"
+                            className="absolute top-1/2 right-0 size-9 -translate-y-1/2"
                         >
                             <CalendarIcon className="size-3.5" />
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent
-                        className="w-auto overflow-hidden p-0"
+                        className="w-auto p-0"
                         align="end"
                         alignOffset={-8}
                         sideOffset={10}
                     >
                         <Calendar
+                            locale={ru}
                             mode="single"
                             disabled={disabled}
                             selected={date}
@@ -113,14 +109,17 @@ export function Calendar28({ plcHolder, onChange, disabled = false, initialDate 
                             onMonthChange={setMonth}
                             onSelect={(selectedDate) => {
                                 setDate(selectedDate);
+                                setValue(formatDate(selectedDate));
+                                onChange(selectedDate);
                                 setOpen(false);
                             }}
-                            startMonth={new Date(2025, 1)}
-                            endMonth={new Date(2030, 12)}
+                            startMonth={new Date(1900, 0)}
+                            endMonth={new Date(2100, 11)}
                         />
                     </PopoverContent>
                 </Popover>
             </div>
+            {invalid && <p id={inputId + '-error'} role="alert" className="text-sm">Введите существующую дату в формате ДД.ММ.ГГГГ или ГГГГ-ММ-ДД.</p>}
         </div>
     );
 }
@@ -159,7 +158,7 @@ export function SelectUser({ setUserId, disabled = false }: SelectUserProps) {
         {error && <div role="alert">Не удалось загрузить сотрудников. <button type="button" disabled={disabled} onClick={() => setRevision((current) => current + 1)}>Повторить</button></div>}
         <Popover open={open} onOpenChange={(next) => { if (!disabled) setOpen(next); }} modal>
             <PopoverTrigger asChild><Button variant="ghost" disabled={disabled || loading}
-                className="absolute top-1/2 right-2 size-6 -translate-y-1/2"><ChevronsUpDownIcon className="size-3.5" /></Button></PopoverTrigger>
+                aria-label="Выбрать сотрудника" className="absolute top-1/2 right-0 size-9 -translate-y-1/2"><ChevronsUpDownIcon className="size-3.5" /></Button></PopoverTrigger>
             <PopoverContent className="p-0"><Command>
                 <CommandInput placeholder="Начните вводить ФИО" disabled={disabled} />
                 <CommandList><CommandEmpty>{error ? 'Не удалось загрузить сотрудников' : 'Пользователь не найден'}</CommandEmpty>
@@ -232,13 +231,13 @@ export function DialogAddVacation({ onCreated, onRefresh }: AddVacationProps) {
         if (value && !open) setUserId(null);
         setOpen(value);
     }}>
-        <DialogTrigger asChild><button type="button" className="addVacationButt " /></DialogTrigger>
-        <DialogContent className="sm:max-w-[40%] p-15">
+        <DialogTrigger asChild><button type="button" className="addVacationButt " aria-label="Добавить отпуск" /></DialogTrigger>
+        <DialogContent className="sm:max-w-2xl p-6 sm:p-10">
             <DialogHeader><DialogTitle>Меню отпусков</DialogTitle></DialogHeader>
             <div className="grid gap-5 py-10">
                 <SelectUser setUserId={setUserId} disabled={pending || uncertain} />
-                <div><Calendar28 plcHolder="Начало отпуска" initialDate={startHoliday} disabled={pending || uncertain} onChange={(date) => setStartDate(calendarDate(date))} /></div>
-                <div><Calendar28 plcHolder="Конец отпуска" initialDate={endHoliday} disabled={pending || uncertain} onChange={(date) => setEndDate(calendarDate(date))} /></div>
+                <div><Calendar28 plcHolder="Начало отпуска" initialDate={startHoliday} disabled={pending || uncertain} onChange={(date) => setStartDate(date ? calendarDate(date) : '')} /></div>
+                <div><Calendar28 plcHolder="Конец отпуска" initialDate={endHoliday} disabled={pending || uncertain} onChange={(date) => setEndDate(date ? calendarDate(date) : '')} /></div>
                 {error && <p role="alert">{error}</p>}
                 {uncertain && <Button type="button" disabled={refreshing} onClick={refreshList}>Обновить список отпусков</Button>}
             </div>
@@ -280,13 +279,13 @@ function VacationList() {
     }, [loadVacations]);
     const upcomingUsers = users.filter((user) => user.end_holiday.slice(0, 10) >= businessDate());
     return <div className="mainBlockTeam">
-        <div className="titleVacation"><p>Сотрудники в отпуске</p><DialogAddVacation onCreated={() => { void loadVacations(); }} onRefresh={loadVacations} /></div>
+        <div className="titleVacation"><p>Отпуска сотрудников</p><DialogAddVacation onCreated={() => { void loadVacations(); }} onRefresh={loadVacations} /></div>
         {loading && <p role="status">Загрузка отпусков…</p>}
         {error && <div role="alert">Не удалось обновить список отпусков. <button type="button" onClick={() => { void loadVacations(); }}>Повторить</button></div>}
         <div className="columnReport">
             {!loading && !error && upcomingUsers.length === 0 && <div style={{ display: 'flex', justifyContent: 'center' }}><img src={imgVacationNone} alt="Отпусков нет" width="500" /></div>}
-            {upcomingUsers.map((user, index) => <div className="rowReport" key={`${user.fname}:${user.lname}:${user.start_holiday}:${user.end_holiday}:${index}`}>
-                <p className="nameReport" id="nameReport">{user.fname} {user.lname}</p>
+            {upcomingUsers.map((user) => <div className="rowReport" key={user.id}>
+                <p className="nameReport">{user.fname} {user.lname}</p>
                 <p>{displayDate(user.start_holiday)} - {displayDate(user.end_holiday)}</p>
             </div>)}
         </div>

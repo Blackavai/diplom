@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
 @import "tailwindcss";
 
 *{
@@ -67,7 +66,7 @@
     border-radius: 20px 20px 0 0; /* Закругленные края */
 }
 
-.active {
+.item_nav a.active {
     font-weight: bold; /* Жирный шрифт для активной вкладки */
     background-color: #ffffff; /* Цвет фона для активной вкладки */
     color: black; /* Цвет текста для активной вкладки */
@@ -168,82 +167,35 @@
     }
 
     .sidebar {
-        font-size: clamp(0.2rem, 0.9rem + 0.5vw, 1rem);
-
-        display: block;
-        position: fixed; /* Фиксированное положение */
-        top: 0;
-        right: -100%; /* Скрываем за пределами экрана */
-        width: 250px; /* Ширина сайдбара */
-        height: 100%; /* Высота сайдбара */
-        background-color: white; /* Цвет фона */
-        transition: right 0.3s ease; /* Анимация появления */
-        z-index: 1000; /* Чтобы он был поверх других элементов */
-        border-left: 1px solid rgba(0, 0, 0, 0.5);
-        overflow-y: auto; /* Прокрутка по вертикали */
-        padding-top: 10px; /* Отступ сверху */
-    }
-
-    .sidebar.active {
-        right: 0; /* Показать сайдбар */
-    }
-
-    .sidebar a {
-        display: block; /* Элементы будут на новой строке */
-        padding: 15px; /* Отступы для ссылок */
-        text-decoration: none;
-        color: black; /* Цвет текста */
-        transition: background-color 0.3s, color 0.3s; /* Плавное изменение фона и цвета */
-    }
-
-    .sidebar a:hover {
-        background-color: rgba(240, 240, 240, 0.5); /* Изменение цвета фона при наведении */
-        color: #FFED00; /* Изменение цвета текста при наведении */
-    }
-
-    .item_auth_sidebar {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 15px;
-    }
-
-    .sidebar_first_str {
-        width: 100%;
-        height: 60px;
-    }
-
-    .sidebar-close-icon {
-        position: absolute; /* Позиционируем иконку */
-        top: 10px; /* Располагаем на верхней границе */
-        right: 10px; /* Располагаем по правому краю */
-        cursor: pointer;
-        width: 25px;
-        height: auto;
-        margin-right: 5%;
-        margin-top: 10px;
-    }
-
-    .overlay {
-        position: fixed;
+        flex-direction: column;
+        justify-content: flex-start;
         top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5); /* Полупрозрачный черный цвет */
-        opacity: 0; /* Скрываем по умолчанию */
-        visibility: hidden; /* Скрываем элемент */
-        transition: opacity 0.3s ease, visibility 0.3s ease; /* Плавный переход */
-        z-index: 500; /* Задать уровень для затемнения */
+        right: 0;
+        left: auto;
+        transform: none;
+        width: min(320px, 100%);
+        max-width: 100%;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+        padding: 50px 20px 20px;
+        overflow-y: auto;
+        overflow-wrap: anywhere;
     }
-
-    .overlay.active {
-        opacity: 1; /* Показать затемнение */
-        visibility: visible; /* Сделать видимым элемент */
-    }
-
-    .adaptive{
-        margin-right: 0;
-        margin-left: 0;
-    }
+    .sidebar nav a { display: block; padding: 15px 0; }
+    .sidebar nav a.active { font-weight: bold; }
+    .item_auth_sidebar { display: flex; align-items: center; gap: 15px; }
+    .item_auth_sidebar span { min-width: 0; }
+    .sideBarHeader { display: flex; align-items: center; margin-right: 5%; }
+    .sideBarHeader img { width: 40px; margin: 0; }
+    .adaptive { margin-right: 0; margin-left: 0; }
 }
+
+.mainBlockGrid { grid-template-columns: minmax(100px, 0.5fr) 0.1fr minmax(0, 2fr) minmax(0, 1fr); }
+.item_nav { min-width: 0; gap: 0.5rem; }
+.item_nav a { overflow-wrap: anywhere; min-width: 0; }
+.item_auth { min-width: 0; width: 100%; max-width: 100%; justify-self: stretch; justify-content: flex-end; margin-right: 0; gap: 10px; padding: 10px; }
+.item_auth span { min-width: 0; margin-right: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: auto; }
+.logout-button { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 44px; height: 44px; cursor: pointer; }
+.logout-button img { max-width: 32px; height: auto; }

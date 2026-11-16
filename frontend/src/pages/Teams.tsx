@@ -1,3 +1,4 @@
+import axios from 'axios';
 import '../style/team.css';
 import arrow from '../assets/right-arrow-upd.png';
 import delTeamUserButt from '../assets/delTeamUser.png';
@@ -81,7 +82,7 @@ export function SelectUser({ selectedUsers, setSelectedUsers, excludedUsers = []
                     <p>Добавить</p>
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className='p-0' side={"left"}>
+            <PopoverContent className='p-0' align="start">
                 <Command>
                     <CommandInput disabled={disabled || loading} placeholder="Начните вводить ФИО" />
                     <CommandList>
@@ -225,9 +226,9 @@ export function DialogMenuTeam({ team, deleteTeam, updateTeamData, refreshTeams 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
-                <img src={arrow} alt={"arrow right "} width={"60px"} className={"box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) arrowAnim adaptArrow"} />
+                <button type="button" className="row-action" aria-label="Открыть карточку"><img src={arrow} alt={"arrow right "} width={"60px"} className={"box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) arrowAnim adaptArrow"} /></button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[40%] p-15">
+            <DialogContent className="sm:max-w-2xl p-6 sm:p-10">
                 <DialogHeader>
                     <DialogTitle>Меню команды</DialogTitle>
                 </DialogHeader>
@@ -346,9 +347,9 @@ export function DialogAddTeam({ onCreated }: { onCreated: (team: Team) => void }
     return (
         <Dialog open={open} onOpenChange={(value) => { if (!busy.current) setOpen(value); }}>
             <DialogTrigger asChild>
-                <button type={'button'} className={'addTeam'}></button>
+                <button type={'button'} className={'addTeam'} aria-label="Добавить команду"></button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[40%] p-15">
+            <DialogContent className="sm:max-w-2xl p-6 sm:p-10">
                 <DialogHeader>
                     <DialogTitle>Создание команды</DialogTitle>
                 </DialogHeader>
@@ -444,6 +445,13 @@ function Teams() {
             addNotification('success', 'Команда успешно удалена');
         } catch (failure: unknown) {
             if (!active.current) return;
+            if (axios.isAxiosError(failure) && failure.response?.status === 404) {
+                requestVersion.current++;
+                setLoading(false);
+                setData((current) => current.filter((team) => team.id !== id_team));
+                addNotification('success', 'Команда уже отсутствует в списке');
+                return;
+            }
             setListError('Удаление команды не подтверждено. Обновите список.');
             addNotification('error', apiResponseMessage(failure, 'Ошибка при удалении команды'));
         }
@@ -480,7 +488,7 @@ function Teams() {
                 {loading && <p role="status">Загрузка команд…</p>}
                 {listError && <div role="alert">{listError} <button type="button" onClick={() => { void fetchTeams(); }}>Повторить</button></div>}
                 <div className={'columnTeam'}>
-                    {!loading && !listError && data.length === 0 ?
+                    {!loading && !listError && data.filter((team) => team.name_team.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 ?
                         (
                             <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
                                 <img src={imgTeamNone} alt="Описание изображения" width={'500'}/>
@@ -489,7 +497,7 @@ function Teams() {
                             data.filter(user => `${user.name_team}`.toLowerCase().includes(searchTerm.toLowerCase())).map(teams => (
                         <div className={'rowTeam'} key={teams.id}>
                             <div>
-                                <p className={'nameTeam'} id={'nameTeam'}>{teams.name_team}</p>
+                                <p className={'nameTeam'}>{teams.name_team}</p>
                             </div>
                             <DialogMenuTeam team={teams} deleteTeam={deleteTeam} updateTeamData={updateTeamData} refreshTeams={fetchTeams} />
                         </div>

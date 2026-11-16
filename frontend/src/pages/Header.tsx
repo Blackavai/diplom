@@ -1,139 +1,76 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import '../style/header.css';
 import { NavLink } from 'react-router-dom';
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from './auth-context';
 
 function Header() {
     const { user, logout } = useAuth();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-
-    // Проверяем, является ли пользователь админом (роль 1)
     const isAdmin = user?.role === 1;
 
-    const handleLogout = () => {
+    useEffect(() => {
+        const mobile = window.matchMedia('(max-width: 1024px)');
+        const closeDesktopMenu = () => { if (!mobile.matches) setIsSidebarOpen(false); };
+        mobile.addEventListener('change', closeDesktopMenu);
+        return () => mobile.removeEventListener('change', closeDesktopMenu);
+    }, []);
+
+    function handleLogout() {
         void logout();
         setIsSidebarOpen(false);
-    };
+    }
 
-    const toggleSidebar = () => {
-        setIsSidebarOpen(!isSidebarOpen);
-    };
-
-    // Компонент навигации — переиспользуем в десктопе и сайдбаре
     const NavigationLinks = ({ onClick }: { onClick?: () => void }) => (
         <>
-            <NavLink 
-                to="/users" 
-                className={({isActive}) => isActive ? "active" : undefined}
-                onClick={onClick}
-            >
-                Сотрудники
-            </NavLink>
-            <NavLink 
-                to="/teams" 
-                className={({isActive}) => isActive ? "active" : undefined}
-                onClick={onClick}
-            >
-                Команды
-            </NavLink>
-            <NavLink 
-                to="/tasks_list" 
-                className={({isActive}) => isActive ? "active" : undefined}
-                onClick={onClick}
-            >
-                Задачи
-            </NavLink>
-            <NavLink 
-                to="/reports_list" 
-                className={({isActive}) => isActive ? "active" : undefined}
-                onClick={onClick}
-            >
-                Отчёты
-            </NavLink>
-            <NavLink 
-                to="/vacation_list" 
-                className={({isActive}) => isActive ? "active" : undefined}
-                onClick={onClick}
-            >
-                Отпуска
-            </NavLink>
+            <NavLink to="/users" onClick={onClick}>Сотрудники</NavLink>
+            <NavLink to="/teams" onClick={onClick}>Команды</NavLink>
+            <NavLink to="/tasks_list" onClick={onClick}>Задачи</NavLink>
+            <NavLink to="/reports_list" onClick={onClick}>Отчёты</NavLink>
+            <NavLink to="/vacation_list" onClick={onClick}>Отпуска</NavLink>
         </>
     );
 
     return (
-        <div className={'mainBlock'}>
-            <div className={'adaptive mainBlockGrid'}>
-                <div className={'border_block item_logo'}>
-                    <NavLink to="/users">
-                        <img src={'../../logo_itk.png'} alt={'oggetto'}/>
-                    </NavLink>
-                </div>
-                
-                {/* Десктопная навигация — показываем только админам */}
-                <div className={'border_block item_nav'}>
-                    {isAdmin && <NavigationLinks />}
-                </div>
-                
-                <div className={'border_block item_auth'}>
-                    {user ? (
-                        <>
-                            <span>{user.fname} {user.lname}</span>
-                            <img
-                                src={'../../exitButton.png'}
-                                alt="Выход"
-                                style={{cursor: 'pointer'}}
-                                onClick={handleLogout}
-                                className={'btnInteractive'}
-                            />
-                        </>
-                    ) : (
-                        <></>
-                    )}
-                </div>
-
-                <div className={'sideBarHeader'}>
-                    <img
-                        src={'../../sidebar_menu.png'}
-                        onClick={toggleSidebar}
-                        alt="Меню"
-                    />
+        <Dialog open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
+            <div className="mainBlock">
+                <div className="adaptive mainBlockGrid">
+                    <div className="border_block item_logo">
+                        <NavLink to={isAdmin ? '/users' : '/tasks'}>
+                            <img src="/logo_itk.png" alt="ИТК" />
+                        </NavLink>
+                    </div>
+                    <nav className="border_block item_nav" aria-label="Основная навигация">
+                        {isAdmin && <NavigationLinks />}
+                    </nav>
+                    <div className="border_block item_auth">
+                        {user && <>
+                            <span title={user.fname + ' ' + user.lname}>{user.fname} {user.lname}</span>
+                            <button type="button" aria-label="Выйти" className="logout-button btnInteractive" onClick={handleLogout}>
+                                <img src="/exitButton.png" alt="Выход" />
+                            </button>
+                        </>}
+                    </div>
+                    <DialogTrigger asChild>
+                        <button type="button" className="sideBarHeader" aria-label="Открыть меню">
+                            <img src="/sidebar_menu.png" alt="" />
+                        </button>
+                    </DialogTrigger>
                 </div>
             </div>
-
-            {/* Мобильное меню — навигация только для админов */}
-            <div className={`sidebar ${isSidebarOpen ? 'active' : ''}`}>
-                <img
-                    src={'../../close_sidebar.png'}
-                    className="sidebar-close-icon"
-                    onClick={toggleSidebar}
-                />
-                <div className={'sidebar_first_str'}></div>
-                
-                {isAdmin && <NavigationLinks onClick={toggleSidebar} />}
-                
-                <div className={'border_block item_auth_sidebar'}>
-                    {user ? (
-                        <>
-                            <span>{user.fname} {user.lname}</span>
-                            <img
-                                src={'../../exitButton.png'}
-                                alt="Выход"
-                                style={{cursor: 'pointer'}}
-                                onClick={handleLogout}
-                                className={'btnInteractive'}
-                            />
-                        </>
-                    ) : (
-                        <></>
-                    )}
-                </div>
-            </div>
-            
-            <div
-                className={`overlay ${isSidebarOpen ? 'active' : ''}`}
-                onClick={toggleSidebar}
-            ></div>
-        </div>
+            <DialogContent className="sidebar">
+                <DialogTitle className="sr-only">Навигация</DialogTitle>
+                <nav aria-label="Мобильная навигация">
+                    {isAdmin && <NavigationLinks onClick={() => setIsSidebarOpen(false)} />}
+                </nav>
+                {user && <div className="item_auth_sidebar">
+                    <span>{user.fname} {user.lname}</span>
+                    <button type="button" aria-label="Выйти" className="logout-button btnInteractive" onClick={handleLogout}>
+                        <img src="/exitButton.png" alt="Выход" />
+                    </button>
+                </div>}
+            </DialogContent>
+        </Dialog>
     );
 }
 

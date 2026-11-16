@@ -215,12 +215,14 @@ async function chooseUserRole(label) {
     await call('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...point });
     await call('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...point });
     await until(() => evaluate(`!document.querySelector('[role=option]') && document.querySelector('[role=combobox]').textContent.includes(${JSON.stringify(label)})`));
+    await until(async () => !await hasText('Отправка изменений временно недоступна'));
 }
 let passed = 0;
 function pass(name) { console.log(`PASS browser: ${name}`); passed++; }
 try {
     await call('Page.enable');
     await call('Runtime.enable');
+    await call('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
     await call('Network.enable');
     await call('Network.setBlockedURLs', { urls: ['https://*'] });
     await call('Fetch.enable', { patterns: [{ urlPattern: `${origin}/api/*`, requestStage: 'Request' }] });
@@ -445,7 +447,7 @@ try {
     await fill('Название', 'Failed team');
     failTeam = true;
     await clickButton('Сохранить');
-    await until(() => hasText('Ошибка при сохранении данных команды'));
+    await until(() => hasText('Synthetic team failure'));
     await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Сохранить'&&!button.disabled)"));
     assert.equal(await evaluate("document.querySelector('input[placeholder=Название]').value"), 'Failed team');
     assert.equal(syntheticTeams.length, 1);
@@ -817,6 +819,7 @@ try {
     await closeDialog();
     await evaluate("Array.from(document.querySelectorAll('.rowUser')).find(row=>row.textContent.includes('Employee Four')).querySelector('img').click()");
     await until(() => hasText('Меню сотрудника'));
+    await until(() => evaluate("Array.from(document.querySelectorAll('button')).some(button=>button.textContent==='Удалить сотрудника'&&!button.disabled)"));
     await clickButton('Удалить сотрудника');
     await until(() => evaluate("document.querySelectorAll('.rowUser').length===2 && !document.querySelector('[role=dialog]')"));
     holdUsers = false;

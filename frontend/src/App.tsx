@@ -1,5 +1,4 @@
 import { Route, Routes } from 'react-router-dom';
-import './App.css';
 import Header from './pages/Header.tsx';
 import User from './pages/users.tsx';
 import LoginPage from './pages/LoginPage.tsx';
@@ -12,6 +11,7 @@ import TasksEmploye from './pages/TasksEmploye.tsx';
 import pages from './assets/404_not_found.png';
 import { Toaster } from 'sonner';
 import { NotificationProvider } from './pages/Notification.tsx';
+import './App.css';
 const App = () => {
     return (
         <>

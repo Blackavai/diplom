@@ -9,6 +9,7 @@ let nextId=0;const calls=new Map();const errors=[];const records=[];const held=[
 let employees=[{id:2,fname:'Alpha',lname:'Test',tg_id:'alpha',post:'Test'},{id:3,fname:'Beta',lname:'Test',tg_id:'beta',post:'Test'}];
 const tasks={2:[{id:201,content:'Existing task',end_date:'2099-01-01'}],3:[]};
 let vacations=[];
+let teams=[];
 let reports=[{id:301,fname:'Alpha',lname:'Test',content:'Report task',text_report:'Synthetic text',end_date:'2026-11-16',check_report:false}];
 const statuses={employees:200,details:200,vacations:200,reports:200,teams:200};
 let holdEmployees=false;
@@ -32,7 +33,7 @@ async function intercept(event){
     if(/\/api\/users\/\d+\/(team|vacation)$/.test(path))return respond(event,statuses.details,statuses.details===200?{user:'Отсутствует'}:{message:'Synthetic details failure'});
     if(path==='/api/users/vacation/view')return respond(event,statuses.vacations,statuses.vacations===200?{user:vacations}:{message:'Synthetic vacation failure'});
     if(path==='/api/reports'&&method==='GET')return respond(event,statuses.reports,statuses.reports===200?reports:{message:'Synthetic report failure'});
-    if((path==='/api/teams/'||path==='/api/teams')&&method==='GET')return respond(event,statuses.teams,statuses.teams===200?[]:{message:'Synthetic team failure'});
+    if((path==='/api/teams/'||path==='/api/teams')&&method==='GET')return respond(event,statuses.teams,statuses.teams===200?teams:{message:'Synthetic team failure'});
     if(method!=='GET'){held.push(event);return;}
     return respond(event,404,{message:'Synthetic unknown route'});
 }
@@ -58,6 +59,7 @@ async function chooseEmployee(name){
 let passed=0;const pass=message=>{passed++;console.log('PASS forms: '+message);};
 try{
     await call('Page.enable');await call('Runtime.enable');await call('Network.enable');
+    await call('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false});
     await call('Network.setBlockedURLs',{urls:['https://*']});
     await call('Emulation.setTimezoneOverride',{timezoneId:'Europe/Moscow'});
     await call('Fetch.enable',{patterns:[{urlPattern:origin+'/api/*',requestStage:'Request'}]});
@@ -67,14 +69,20 @@ try{
     const initial=await waitHeld('/api/users');
     assert.equal(await evaluate(text('Загрузка сотрудников…')),true);
     assert.equal(await evaluate("Boolean(document.querySelector('img[alt=\"Сотрудников нет\"]'))"),false);
-    holdEmployees=false;await respond(initial,500,{message:'Synthetic failure'});
+    statuses.employees=500;holdEmployees=false;await respond(initial,500,{message:'Synthetic failure'});
+    // В dev StrictMode запускает эффект дважды: отвечаем и на второй удержанный GET.
+    for(let index=held.length-1;index>=0;index--){
+        if(new URL(held[index].request.url).pathname==='/api/users'){
+            await respond(held.splice(index,1)[0],500,{message:'Synthetic failure'});
+        }
+    }
     await until(text('Не удалось загрузить сотрудников'));
     assert.equal(await evaluate("Boolean(document.querySelector('img[alt=\"Сотрудников нет\"]'))"),false);
-    statuses.details=500;await click('Повторить');
+    statuses.employees=200;statuses.details=500;await click('Повторить');
     await until("document.querySelectorAll('.rowUserTask').length===2 && document.body.innerText.includes('Не удалось обновить данные сотрудника')");
     assert.equal(await evaluate("document.querySelectorAll('.badgeVacUser').length"),0);
     assert.equal(await evaluate("document.querySelector('.rowUserTask').innerText.includes('Задач: —')"),true);
-    statuses.details=200;await evaluate("document.querySelectorAll('.rowUserTask button').forEach(button=>button.click())");
+    statuses.details=200;await evaluate("Array.from(document.querySelectorAll('.rowUserTask button')).filter(button=>button.textContent==='Повторить загрузку').forEach(button=>button.click())");
     await until("document.querySelector('.rowUserTask').innerText.includes('Задач: 1') && !document.body.innerText.includes('Не удалось обновить данные сотрудника')");
     pass('loading/error do not become an empty list, zero tasks or a false vacation badge; GET retry recovers');
 
@@ -123,7 +131,7 @@ try{
     pass('editing the employee search clears the old ID; vacation submit locks controls and preserves a rejected draft');
 
     await click('Открыть отпуск');const retryVacation=await waitHeld('/api/users/vacation/3');
-    vacations=[{fname:'Beta',lname:'Test',start_holiday:'2099-02-01',end_holiday:'2099-02-02'}];statuses.vacations=500;
+    vacations=[{id:501,fname:'Beta',lname:'Test',start_holiday:'2099-02-01',end_holiday:'2099-02-02'}];statuses.vacations=500;
     await respond(retryVacation,201,{message:'Saved',user:{id:501,id_user:'3',start_holiday:'2099-02-01',end_holiday:'2099-02-02'}});
     await until("!document.querySelector('[role=dialog]') && document.body.innerText.includes('Не удалось обновить список отпусков')");
     const vacationPosts=counts('/api/users/vacation/3');statuses.vacations=200;await click('Повторить');await until("document.querySelectorAll('.rowReport').length===1");
@@ -157,11 +165,31 @@ try{
     assert.equal(await evaluate("document.querySelectorAll('.rowUser').length"),2);
     assert.equal(await evaluate("Boolean(document.querySelector('[role=dialog]'))"),true);
     pass('employee details retry and guarded deletion preserve the row/dialog on a dependency conflict');
+    await click('Удалить сотрудника');
+    const absent=await waitHeld('/api/auth/delUser/2');
+    employees=employees.filter(employee=>employee.id!==2);
+    await respond(absent,404,{message:'Пользователь не найден'});
+    await until("!document.querySelector('[role=dialog]') && document.querySelectorAll('.rowUser').length===1");
+    pass('a confirmed 404 removes a stale employee row without repeating DELETE');
+    const employeeReads=counts('/api/users');
+    await fill('Поиск сотрудника','BE');await until("document.querySelectorAll('.rowUser').length===1");
+    await fill('Поиск сотрудника','missing');await until("document.querySelectorAll('.rowUser').length===0");
+    await fill('Поиск сотрудника','');await until("document.querySelectorAll('.rowUser').length===1");
+    assert.equal(counts('/api/users'),employeeReads);
+    pass('employee search ignores case, shows an empty result and restores the current list without GET');
 
     statuses.teams=500;await navigate('/teams');await until(text('Не удалось обновить список команд'));
     assert.equal(await evaluate("Boolean(document.querySelector('img[alt=\"Описание изображения\"]'))"),false);
     statuses.teams=200;await click('Повторить');await until("Boolean(document.querySelector('img[alt=\"Описание изображения\"]'))");
     pass('team network failure is distinct from an empty list and supports GET retry');
+    teams=[{id:10,name_team:'Alpha team'},{id:11,name_team:'Beta team'}];
+    await navigate('/teams');await until("document.querySelectorAll('.rowTeam').length===2");
+    const teamReads=counts('/api/teams/');
+    await fill('Поиск команды','ALPHA');await until("document.querySelectorAll('.rowTeam').length===1");
+    await fill('Поиск команды','missing');await until("document.querySelectorAll('.rowTeam').length===0 && Boolean(document.querySelector('img[alt=\"Описание изображения\"]'))");
+    await fill('Поиск команды','');await until("document.querySelectorAll('.rowTeam').length===2");
+    assert.equal(counts('/api/teams/'),teamReads);
+    pass('team search ignores case, shows an empty result and restores the current list without GET');
     assert.deepEqual(errors,[]);
     console.log('Browser form scenarios passed: '+passed+'; synthetic API only');
 }catch(error){
