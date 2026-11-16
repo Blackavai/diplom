@@ -45,7 +45,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use((response) => response, (error: unknown) => {
     if (axios.isAxiosError(error) && error.config && requestGenerations.get(error.config) === generation) {
         if (error.response?.status === 401) for (const handler of unauthorizedHandlers) handler();
-        if (error.response?.status === 403) toast.error('Недостаточно прав или требуется повторная проверка сессии', { id: 'api-forbidden' });
+        const passwordRequest = error.config.url === '/auth/change-password' ||
+            /^\/auth\/users\/[1-9]\d*\/reset-password$/.test(error.config.url || '');
+        if (error.response?.status === 403 && !passwordRequest) toast.error('Недостаточно прав или требуется повторная проверка сессии', { id: 'api-forbidden' });
     }
     return Promise.reject(error);
 });

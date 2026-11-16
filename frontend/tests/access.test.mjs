@@ -207,3 +207,27 @@ test('forbidden session closes the verified page', () => {
     assert.ok(html.includes('Доступ запрещён'));
     assert.equal(html.includes('PROTECTED_MANAGER_DATA'), false);
 });
+
+test('password recommendation renders a change link while preserving business access', () => {
+    globalThis.__accessState = { user: { id: 2, role: 2, passwordChangeRecommended: true }, status: 'authenticated', isCheckingSession: false };
+    const result = renderToString(React.createElement(MemoryRouter, { initialEntries: ['/tasks'] },
+        React.createElement(Routes, null, React.createElement(Route, { element: React.createElement(Guard) },
+            React.createElement(Route, { path: '/tasks', element: React.createElement('p', null, 'Business content') })))));
+    assert.match(result, /Рекомендуем сменить пароль/);
+    assert.match(result, /href="\/change-password"/);
+    assert.match(result, /Business content/);
+});
+
+test('password forms handle 403 locally without a misleading permissions toast or logout', async () => {
+    setVerifiedSession(proof);
+    api.defaults.adapter = fail(403);
+    let logouts = 0;
+    const unsubscribe = onUnauthorized(() => logouts++);
+    try {
+        for (const path of ['/auth/change-password', '/auth/users/2/reset-password']) {
+            await assert.rejects(api.post(path, {}));
+        }
+        assert.equal(logouts, 0);
+        assert.equal(globalThis.__accessToasts.length, 0);
+    } finally { unsubscribe(); }
+});

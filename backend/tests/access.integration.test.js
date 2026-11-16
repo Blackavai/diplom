@@ -68,7 +68,7 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
         return result;
     }
     const managerRoutes = [
-        ['POST', '/api/auth/createUser'], ['DELETE', `/api/auth/delUser/${other.id}`],
+        ['POST', '/api/auth/createUser'], ['POST', `/api/auth/users/${other.id}/reset-password`], ['DELETE', `/api/auth/delUser/${other.id}`],
         ['GET', '/api/users'], ['POST', `/api/users/update/${other.id}`], ['GET', `/api/users/delete/${other.id}`],
         ['POST', `/api/users/vacation/${other.id}`], ['GET', '/api/users/vacation/view'],
         ['GET', '/api/teams'], ['POST', '/api/teams/create'], ['PUT', '/api/teams/edit/1'],
@@ -79,7 +79,7 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
     ];
     const protectedRoutes = [...managerRoutes,
         ...['team', 'tasks', 'vacation'].map((part) => ['GET', `/api/users/${worker.id}/${part}`]),
-        ['POST', '/api/reports/new'], ['GET', '/api/auth/protected'], ['POST', '/api/auth/logout']
+        ['POST', '/api/reports/new'], ['POST', '/api/auth/change-password'], ['GET', '/api/auth/protected'], ['POST', '/api/auth/logout']
     ];
 
     await t.test('every protected route rejects anonymous, forged and expired tokens without writes', async () => {
@@ -123,7 +123,7 @@ test('access-control matrix and atomic reports on synthetic PostgreSQL', {
         assert.equal(response.status, 200);
         assert.equal(response.data.user.id, worker.id);
         assert.equal(response.data.user.role, 2);
-        assert.deepEqual(Object.keys(response.data.user).sort(), ['fname', 'id', 'lname', 'post', 'role', 'tg_id']);
+        assert.deepEqual(Object.keys(response.data.user).sort(), ['fname', 'id', 'lname', 'passwordChangeRecommended', 'post', 'role', 'tg_id']);
         assert.equal(response.headers.get('cache-control'), 'no-store');
         assert.equal((await request('GET', '/api/auth/protected', null, undefined, { Cookie: `token=${worker.token}` })).status, 401);
     });

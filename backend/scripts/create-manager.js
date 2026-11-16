@@ -16,8 +16,8 @@ async function createManager(pool, { expectedDatabase, account, firstName, lastN
         const existing = await client.query('SELECT 1 FROM users WHERE role=1 OR tg_id=$1 LIMIT 1', [account]);
         if (existing.rowCount) throw new Error('A manager or this account already exists');
         if (apply) {
-            const result = await client.query(`INSERT INTO users(fname,lname,tg_id,post,role,password)
-                VALUES ($1,$2,$3,$4,1,$5) RETURNING id`, [firstName,lastName,account,position,hash]);
+            const result = await client.query(`INSERT INTO users(fname,lname,tg_id,post,role,password,password_change_recommended)
+                VALUES ($1,$2,$3,$4,1,$5,true) RETURNING id`, [firstName,lastName,account,position,hash]);
             if (result.rowCount !== 1) throw new Error('Manager not created');
         }
         await client.query('COMMIT');

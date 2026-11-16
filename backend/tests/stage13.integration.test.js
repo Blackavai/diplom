@@ -87,7 +87,7 @@ test('stage 13 cookies, CSRF, CRUD, idempotency and safe provisioning', {
         assert.doesNotMatch(session.cookie,/; Secure/);
         assert.match(session.proof.sessionId,/^[a-f0-9]{32}$/);
         assert.match(session.proof.csrfToken,/^[a-f0-9]{64}$/);
-        assert.deepEqual(Object.keys(session.proof.user).sort(),['fname','id','lname','post','role','tg_id']);
+        assert.deepEqual(Object.keys(session.proof.user).sort(),['fname','id','lname','passwordChangeRecommended','post','role','tg_id']);
         assert.equal(session.proof.user.id,manager.id);
         assert.equal((await request('GET','/users',undefined,session.headers)).status,200);
         assert.equal((await request('GET','/users',undefined,{ Cookie:'token=legacy-copy' })).status,401);

@@ -322,20 +322,14 @@ try {
     assert.equal(records.filter((entry) => entry.path === '/api/auth/login').at(-1).passwordChars, expectedPassword.length);
     pass('long login password is intact, double submit is blocked and 429 is visible');
 
-    await evaluate("Array.from(document.querySelectorAll('p')).find(p => p.textContent === 'Восстановление пароля').click()");
-    await fill('Введите логин', 'synthetic-test');
-    await clickButton('Восстановить');
-    await until(() => hasText('Проверочный вопрос'));
-    await fill('Ответ', 'synthetic-answer');
-    await clickButton('Подтвердить');
-    await until(() => hasText('Сбросить пароль'));
-    assert.equal(await evaluate("document.querySelector('input[placeholder=\"Новый пароль\"]').maxLength"), -1);
-    await fill('Новый пароль', expectedPassword);
-    await fill('Подтверждение пароля', expectedPassword);
-    await clickButton('Сбросить пароль');
+    const recoveryRequests = records.filter((entry) => entry.path.includes('/recPass') || entry.path.includes('/recAns')).length;
+    await clickButton('Восстановление пароля');
+    await until(() => hasText('обратитесь к менеджеру'));
+    assert.equal(await evaluate("Boolean(document.querySelector('input[placeholder=Ответ]'))"), false);
+    assert.equal(records.filter((entry) => entry.path.includes('/recPass') || entry.path.includes('/recAns')).length, recoveryRequests);
+    await clickButton('Назад');
     await until(() => hasText('Войти'));
-    assert.equal(records.filter((entry) => entry.path === '/api/auth/recPass/newPass').at(-1).passwordChars, expectedPassword.length);
-    pass('recovery transmits a full password longer than 1024 characters without a length rule');
+    pass('recovery directs users to the manager without requesting a question or sending secrets');
 
     mode = 'manager';
     await cookie('token', 'synthetic-session');

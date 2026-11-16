@@ -46,6 +46,7 @@ function Header() {
                     <div className="border_block item_auth">
                         {user && <>
                             <span title={user.fname + ' ' + user.lname}>{user.fname} {user.lname}</span>
+                            <NavLink className="password-link" to="/change-password">Сменить пароль</NavLink>
                             <button type="button" aria-label="Выйти" className="logout-button btnInteractive" onClick={handleLogout}>
                                 <img src="/exitButton.png" alt="Выход" />
                             </button>
@@ -65,6 +66,7 @@ function Header() {
                 </nav>
                 {user && <div className="item_auth_sidebar">
                     <span>{user.fname} {user.lname}</span>
+                    <NavLink className="password-link" to="/change-password" onClick={() => setIsSidebarOpen(false)}>Сменить пароль</NavLink>
                     <button type="button" aria-label="Выйти" className="logout-button btnInteractive" onClick={handleLogout}>
                         <img src="/exitButton.png" alt="Выход" />
                     </button>

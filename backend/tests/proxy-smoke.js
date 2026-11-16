@@ -23,6 +23,12 @@ async function main() {
                 WHERE tg_id='browser-proxy-manager' AND NOT EXISTS (
                     SELECT 1 FROM task_list WHERE id_user=users.id AND content='Browser proxy report task' AND status=false
                 )`);
+            for (const label of ['nginx', 'vite']) {
+                await pool.query(`INSERT INTO users(fname,lname,tg_id,role,post,password,password_change_recommended)
+                    SELECT $1::varchar(255),'Test',$2::varchar(255),2,'Test',$3::text,true
+                    WHERE NOT EXISTS (SELECT 1 FROM users WHERE tg_id=$2)`,
+                ['Browser password ' + label, 'browser-password-worker-' + label, hash]);
+            }
             console.log('Synthetic browser fixture ready');
             return;
         }
@@ -88,7 +94,34 @@ async function main() {
             assert.equal(report.date, '2026-11-15');
             const tasks = (await (await request(`/api/users/${actor.id}/tasks`, 'GET', undefined, token)).json()).user;
             assert.equal(tasks.some(item => item.id === task.id), false);
-            assert.equal((await request('/api/auth/recPass', 'POST', { tg_id: login })).status, 200);
+            assert.equal((await request('/api/auth/recPass', 'POST', { tg_id: login })).status, 410);
+            const passwordAccount = `proxy-password-${label}-${Date.now()}`;
+            const passwordUser = await request('/api/auth/createUser', 'POST', {
+                fname: 'Password', lname: 'Proxy', tg_id: passwordAccount, post: 'Test', role: 2, pass: 'Assigned proxy password'
+            }, token);
+            assert.equal(passwordUser.status, 201);
+            const passwordUserId = (await passwordUser.json()).user.id;
+            const passwordLogin = async (password) => {
+                const response = await request('/api/auth/login', 'POST', { tg_id: passwordAccount, password });
+                assert.equal(response.status, 200);
+                return (await response.json()).user;
+            };
+            const beforeReset = await passwordLogin('Assigned proxy password');
+            assert.equal(beforeReset.passwordChangeRecommended, true);
+            assert.equal((await request(`/api/auth/users/${passwordUserId}/reset-password`, 'POST', {
+                currentPassword: password, newPassword: 'Reset proxy password', confirmPassword: 'Reset proxy password'
+            }, token)).status, 200);
+            assert.equal((await request('/api/auth/protected', 'GET', undefined, beforeReset.token)).status, 401);
+            const afterReset = await passwordLogin('Reset proxy password');
+            assert.equal((await request('/api/auth/change-password', 'POST', {
+                currentPassword: 'Reset proxy password', newPassword: 'Personal proxy password', confirmPassword: 'Personal proxy password'
+            }, afterReset.token)).status, 200);
+            assert.equal((await request('/api/auth/protected', 'GET', undefined, afterReset.token)).status, 401);
+            assert.equal((await passwordLogin('Personal proxy password')).passwordChangeRecommended, false);
+            for (const path of ['/recPass', '/recAns', '/recPass/newPass']) {
+                assert.equal((await request('/api/auth' + path, 'POST', { tg_id: passwordAccount })).status, 410);
+            }
+            assert.equal((await request(`/api/auth/delUser/${passwordUserId}`, 'DELETE', undefined, token)).status, 201);
             const missing = await request('/api/no-such-route?token=synthetic-private-proxy');
             assert.equal(missing.status, 404);
             assert.match(missing.headers.get('content-type'), /application\/json/);
@@ -119,7 +152,7 @@ async function main() {
             await pool.query('UPDATE users SET role=1 WHERE id=$1', [actor.id]);
             assert.equal((await request('/api/auth/logout', 'POST', {}, token)).status, 200);
             assert.equal((await request('/api/auth/protected', 'GET', undefined, token)).status, 401);
-            console.log(`PASS proxy: ${label} SPA, login/cookie/Bearer, task CRUD/end_date/date/404, report completion, recovery, Swagger, logout/revocation, JSON 400/401/403/404/413/415`);
+            console.log(`PASS proxy: ${label} SPA, login/cookie/Bearer, task CRUD/end_date/date/404, report completion, password change/reset/recovery 410, Swagger, logout/revocation, JSON 400/401/403/404/413/415`);
         }
         // Both proxies share the existing per-account limiter; forged XFF cannot reset it.
         for (let index = 0; index < 12; index++) {

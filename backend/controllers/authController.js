@@ -4,9 +4,9 @@ const { randomBytes } = require('node:crypto');
 const { positiveId } = require('../middleware/authMiddleware');
 const { setSessionCookie, csrfToken, isBrowserLoginAllowed } = require('../utils/sessionCookies');
 const { isValidUserText, isValidUserAccount } = require('../utils/userValidation');
-const { recovery, isNonEmptyString } = require('../utils/passwordRecovery');
+const { isNonEmptyString } = require('../utils/passwordRecovery');
 const { hashPassword, verifyPassword, isValidPassword, legacyLoginAllowed } = require('../utils/passwords');
-const { loginAttempts } = require('../utils/loginAttempts');
+const { loginAttempts, passwordAttempts } = require('../utils/loginAttempts');
 
 const invalidCredentials = (res) => res.status(400).json({ message: 'Неверный логин или пароль' });
 function authFailure(res, error) {
@@ -21,15 +21,16 @@ function authFailure(res, error) {
     return res.status(500).json({ message: 'Ошибка сервера' });
 }
 
-function validateRecoveryRequest(req, res) {
+function validatePasswordRequest(req, res) {
     res.set('Cache-Control', 'no-store');
-    if (!isNonEmptyString(req.body?.tg_id)) {
-        res.status(400).json({ message: 'Некорректные данные восстановления' });
-        return false;
-    }
-    if (!recovery.allowAttempt(req.body.tg_id, req.ip || req.socket?.remoteAddress || 'unknown')) {
+    if (!passwordAttempts.allowAttempt(String(req.user.id), req.ip || req.socket?.remoteAddress || 'unknown')) {
         res.set('Retry-After', '900');
         res.status(429).json({ message: 'Слишком много попыток. Повторите позже.' });
+        return false;
+    }
+    const { currentPassword, newPassword, confirmPassword } = req.body || {};
+    if (!isValidPassword(currentPassword) || !isValidPassword(newPassword) || newPassword !== confirmPassword) {
+        res.status(400).json({ message: 'Заполните текущий и новый пароль; подтверждение должно совпадать' });
         return false;
     }
     return true;
@@ -118,6 +119,7 @@ const AuthController = {
                     tg_id: user.tg_id,
                     post: user.post,
                     role: user.role,
+                    passwordChangeRecommended: user.password_change_recommended === true,
                     ...(bearerLogin ? { token } : {})
                 } });
         } catch (err) {
@@ -136,66 +138,55 @@ const AuthController = {
     },
     protected: async (req, res) => {
         const { id, fname, lname, tg_id, post, role } = req.user;
-        return res.json({ message: 'Доступ разрешен', user: { id, fname, lname, tg_id, post, role },
+        return res.json({ message: 'Доступ разрешен', user: { id, fname, lname, tg_id, post, role,
+            passwordChangeRecommended: req.user.password_change_recommended === true },
             ...(req.authMode === 'cookie' ? { sessionId: req.sessionId, csrfToken: csrfToken(req.authToken) } : {}) });
     },
 
-    recPass: async (req, res) => {
-        if (!validateRecoveryRequest(req, res)) return;
+    changePassword: async (req, res) => {
+        if (!validatePasswordRequest(req, res)) return;
         try {
-            const { tg_id } = req.body;
-            const recPass = await AuthModel.recPass(tg_id);
-            if (!recPass) return res.status(403).json({ message: 'Восстановление недоступно для указанных данных' });
-            return res.status(200).json({
-                message: "Для восстановления пароля",
-                recoverPassword: {
-                    questions: recPass.question
-                }
-            });
-        } catch (err) {
-            console.error('Ошибка получения вопроса восстановления');
-            return res.status(500).json({ message: 'Ошибка сервера' });
-        }
-    },
-
-    recAns: async (req, res) => {
-        if (!validateRecoveryRequest(req, res)) return;
-        if (!isNonEmptyString(req.body.secAns)) return res.status(400).json({ message: 'Введите ответ на проверочный вопрос' });
-        try {
-            const { tg_id, secAns } = req.body;
-            const recPass = await AuthModel.recAns(tg_id, secAns);
-
-            if (recPass) {
-                const recoveryToken = recovery.issue(recPass.id, tg_id);
-                if (!recoveryToken) return res.status(503).json({ message: 'Восстановление временно недоступно' });
-                return res.status(200).json({
-                    message: "Ответ верный. Переходите к восстановлению пароля.",
-                    recoveryToken,
-                    expiresIn: 300
-                });
-            } else {
-                return res.status(403).json({ message: "Неверный ответ на вопрос" });
+            const { currentPassword, newPassword } = req.body;
+            if (currentPassword === newPassword) return res.status(400).json({ message: 'Новый пароль должен отличаться от текущего' });
+            const credentials = await AuthModel.findCredentialsById(req.user.id);
+            if (!credentials || credentials.session_version !== req.user.session_version ||
+                !(await verifyPassword(currentPassword, credentials.password)).matches) {
+                return res.status(403).json({ message: 'Текущий пароль не подтверждён' });
             }
-        } catch (err) {
-            console.error('Ошибка проверки ответа восстановления');
-            return res.status(500).json({ message: 'Ошибка сервера' });
+            const hash = await hashPassword(newPassword);
+            if (!await AuthModel.changeOwnPassword(credentials, hash)) {
+                return res.status(409).json({ message: 'Данные доступа изменились. Повторите вход.' });
+            }
+            return res.status(200).json({ message: 'Пароль изменён. Войдите с новым паролем.', success: true });
+        } catch (error) {
+            return authFailure(res, error);
         }
     },
-
-    newPass: async (req, res) => {
-        if (!validateRecoveryRequest(req, res)) return;
-        const { tg_id, textNewPassword, recoveryToken } = req.body;
-        if (!isValidPassword(textNewPassword)) return res.status(400).json({ message: 'Введите пароль' });
-        const userId = recovery.consume(recoveryToken, tg_id);
-        if (userId === null) return res.status(403).json({ message: 'Подтвердите восстановление пароля заново' });
+    resetPassword: async (req, res) => {
+        if (!validatePasswordRequest(req, res)) return;
+        const id = positiveId(req.params.id);
+        if (id === null) return res.status(400).json({ message: 'Некорректный идентификатор' });
+        if (id === req.user.id) return res.status(400).json({ message: 'Свой пароль измените через форму смены пароля' });
         try {
-            const hash = await hashPassword(textNewPassword);
-            const newPasswords = await AuthModel.newPassword(userId, tg_id, hash);
-            if (!newPasswords) return res.status(403).json({ message: 'Подтвердите восстановление пароля заново' });
-            return res.status(200).json({ message: "Пароль успешно изменён", success: true });
-        } catch (err) {
-            return authFailure(res, err);
+            const { currentPassword, newPassword } = req.body;
+            const manager = await AuthModel.findCredentialsById(req.user.id);
+            const target = await AuthModel.findCredentialsById(id);
+            if (!manager || manager.role !== 1 || manager.session_version !== req.user.session_version ||
+                !(await verifyPassword(currentPassword, manager.password)).matches) {
+                return res.status(403).json({ message: 'Пароль менеджера не подтверждён' });
+            }
+            const hash = await hashPassword(newPassword);
+            if (!target) return res.status(404).json({ message: 'Пользователь не найден' });
+            await AuthModel.resetUserPassword(manager, target, hash);
+            return res.status(200).json({ message: 'Новый пароль установлен. Передайте его сотруднику лично.', success: true });
+        } catch (error) {
+            if (error.code === 'CREDENTIALS_CHANGED') return res.status(409).json({ message: 'Данные доступа изменились. Проверьте состояние пользователя и повторите вход.' });
+            return authFailure(res, error);
         }
+    },
+    recoveryUnavailable: async (req, res) => {
+        res.set('Cache-Control', 'no-store');
+        return res.status(410).json({ message: 'Восстановление по секретному вопросу отключено. Обратитесь к менеджеру.' });
     }
 };
 

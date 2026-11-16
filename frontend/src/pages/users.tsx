@@ -7,6 +7,7 @@ import {
     DialogTitle,
     DialogTrigger
 } from "@/components/ui/dialog.tsx";
+import ResetPasswordForm from './ResetPasswordForm';
 import pencil from "@/assets/editUser.png";
 import type { TaskSummary, VacationPeriod } from '@/lib/types';
 import { useAuth } from './auth-context';
@@ -51,7 +52,9 @@ export function DialogDemo({ user, onDelete }: { user: UserSummary; onDelete: (i
     const [revision, setRevision] = useState(0);
     const busy = useRef(false);
     const mounted = useRef(true);
-    const { sessionError, retrySession } = useAuth();
+    const { user: currentUser, sessionError, retrySession } = useAuth();
+    const [resetMode, setResetMode] = useState(false);
+    const [resetPending, setResetPending] = useState(false);
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
     useEffect(() => {
         if (!open) return;
@@ -86,7 +89,7 @@ export function DialogDemo({ user, onDelete }: { user: UserSummary; onDelete: (i
     }
     const vacationText = vacation && typeof vacation === 'object'
         ? `${displayDate(vacation.start_holiday)} - ${displayDate(vacation.end_holiday)}` : vacation || '—';
-    return <Dialog open={open} onOpenChange={(value) => { if (!busy.current) setOpen(value); }}>
+    return <Dialog open={open} onOpenChange={(value) => { if (!busy.current && !resetPending) { setOpen(value); if (!value) setResetMode(false); } }}>
         <DialogTrigger asChild><button type="button" className="row-action" aria-label="Открыть карточку"><img src={pencil} alt="arrow right" width="60px" className="box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2) pencilAnim " /></button></DialogTrigger>
         <DialogContent className="sm:max-w-2xl p-6 sm:p-10">
             <DialogHeader><DialogTitle>Меню сотрудника</DialogTitle></DialogHeader>
@@ -100,9 +103,14 @@ export function DialogDemo({ user, onDelete }: { user: UserSummary; onDelete: (i
                 <div className="grid grid-cols-1 items-center gap-4 hrTitle"><p>Задач стоит: {tasks ? tasks.length : '—'}</p></div>
                 {error && <div role="alert">{error} <button type="button" disabled={loading || pending} onClick={() => setRevision((value) => value + 1)}>Повторить</button></div>}
             </div>
+            {resetMode && <ResetPasswordForm userId={user.id}
+                onPendingChange={setResetPending} onCancel={() => setResetMode(false)}
+                onSuccess={() => { setResetMode(false); setOpen(false); }} />}
             <DialogFooter>
+                {!resetMode && currentUser?.role === 1 && currentUser.id !== user.id && <Button type="button" disabled={loading || pending}
+                    onClick={() => setResetMode(true)}>Сбросить пароль</Button>}
                 {sessionError && <Button type="button" onClick={retrySession}>Повторить проверку сессии</Button>}
-                <Button type="button" variant="red" className="btnInteractive" disabled={loading || pending} onClick={handleDelete}>
+                <Button type="button" variant="red" className="btnInteractive" disabled={loading || pending || resetMode} onClick={handleDelete}>
                     {pending ? 'Удаление…' : 'Удалить сотрудника'}
                 </Button>
             </DialogFooter>
@@ -225,7 +233,7 @@ export function DialogAddUser({ onCreated }: { onCreated: (user: CreatedUser) =>
                     </div>
                     <div className="grid grid-cols-1 items-center gap-4 hrTitle">
                         <Label className="text-right ">
-                            Пароль:
+                            Начальный пароль:
                             <input
                                 disabled={pending}
                                 type="password"

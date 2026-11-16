@@ -104,3 +104,10 @@
         margin-right: 50px;
     }
 }
+.inputLogin .recovery-link {
+    background: transparent;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: .5rem;
+}
